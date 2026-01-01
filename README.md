@@ -1,4 +1,4 @@
-# rust-compiler
+# Arc-compiler
 
 A simple expression evaluator written in Rust. This project serves as a learning exercise to understand the fundamentals of building a compiler. It can parse and evaluate basic arithmetic expressions.
 
