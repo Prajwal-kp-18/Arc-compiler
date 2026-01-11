@@ -1,6 +1,22 @@
 [package]
-name = "rust-compiler"
+name = "Arc-compiler"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Prajwal KP"]
+description = "A simple expression evaluator and compiler learning project that parses and evaluates arithmetic expressions"
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/Prajwal-kp-18/Arc-compiler"
+keywords = ["compiler", "parser", "lexer", "ast", "evaluator"]
+categories = ["parser-implementations", "compilers"]
 
 [dependencies]
+
+[[bin]]
+name = "rust-compiler"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
