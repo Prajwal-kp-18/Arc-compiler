@@ -4,50 +4,79 @@ use ast::Ast;
 use ast::parser::Parser;
 
 fn main() {
-    println!("=== Arc Compiler - Data Types & Type System Test ===\n");
+    println!("=== Arc Compiler - Comparison & Logical Operators Test ===\n");
 
-    // Test cases for all data types
+    // Test cases for comparison and logical operators
     let test_cases = vec![
-        // Integer operations
-        ("7 - (30 + 7) * 8 / 2", "Integer arithmetic"),
-        ("10 % 3", "Integer modulo"),
-        ("2 ** 3", "Integer exponentiation"),
+        // Comparison operators with integers
+        ("5 == 5", "Integer equality: 5 == 5"),
+        ("5 == 3", "Integer inequality: 5 == 3"),
+        ("5 != 3", "Not equal: 5 != 3"),
+        ("10 > 5", "Greater than: 10 > 5"),
+        ("3 < 7", "Less than: 3 < 7"),
+        ("5 >= 5", "Greater or equal: 5 >= 5"),
+        ("3 <= 5", "Less or equal: 3 <= 5"),
         
-        // Floating-point operations
-        ("3.14 + 2.86", "Float addition: 3.14 + 2.86"),
-        ("10.5 * 2.0", "Float multiplication"),
-        ("15.0 / 3.0", "Float division"),
-        ("2.5 ** 2.0", "Float exponentiation"),
+        // Comparison with floats
+        ("3.14 == 3.14", "Float equality"),
+        ("2.5 > 1.5", "Float greater than"),
+        ("1.0 < 2.0", "Float less than"),
         
-        // Mixed integer and float (type coercion)
-        ("10 + 5.5", "Mixed int + float (coercion to float)"),
-        ("3.5 * 2", "Mixed float * int"),
-        ("10 / 2.5", "Mixed int / float"),
+        // Mixed type comparisons (int and float)
+        ("5 == 5.0", "Mixed equality: 5 == 5.0"),
+        ("10 > 5.5", "Mixed comparison: 10 > 5.5"),
+        ("3.5 < 7", "Mixed comparison: 3.5 < 7"),
         
-        // Boolean literals
-        ("true", "Boolean true"),
-        ("false", "Boolean false"),
+        // Boolean comparisons
+        ("true == true", "Boolean equality"),
+        ("true != false", "Boolean inequality"),
         
-        // String literals
-        ("\"Hello, World!\"", "String literal"),
-        ("\"Arc\" + \" Compiler\"", "String concatenation"),
-        ("\"Value: \" + \"42\"", "String + string"),
+        // String comparisons
+        ("\"hello\" == \"hello\"", "String equality"),
+        ("\"abc\" < \"xyz\"", "String less than"),
         
-        // Unary operators with different types
-        ("-5", "Unary minus on integer"),
-        ("-3.14", "Unary minus on float"),
-        ("+42", "Unary plus on integer"),
+        // Logical AND with short-circuit
+        ("true && true", "Logical AND: true && true"),
+        ("true && false", "Logical AND: true && false"),
+        ("false && true", "Logical AND: false && true (short-circuit)"),
         
-        // Complex expressions with mixed types
-        ("2.0 + 3 * 4.5", "Complex: 2.0 + 3*4.5"),
-        ("10.0 % 3.0", "Float modulo"),
+        // Logical OR with short-circuit
+        ("true || false", "Logical OR: true || false (short-circuit)"),
+        ("false || true", "Logical OR: false || true"),
+        ("false || false", "Logical OR: false || false"),
         
-        // Bitwise operations (integers only)
-        ("12 & 10", "Bitwise AND"),
-        ("4 << 2", "Left shift"),
+        // Logical NOT
+        ("!true", "Logical NOT: !true"),
+        ("!false", "Logical NOT: !false"),
+        ("!(5 > 3)", "Logical NOT with expression"),
         
-        // Error cases (will show type errors)
-        // These might fail but demonstrate type checking
+        // Complex logical expressions
+        ("true && true && true", "Multiple AND"),
+        ("false || false || true", "Multiple OR"),
+        ("true && false || true", "Mixed: true && false || true"),
+        ("(true || false) && true", "Parenthesized: (true || false) && true"),
+        
+        // Comparison with arithmetic
+        ("5 + 3 == 8", "Arithmetic in comparison: 5+3 == 8"),
+        ("10 - 2 > 5", "Arithmetic in comparison: 10-2 > 5"),
+        ("3 * 4 <= 12", "Arithmetic in comparison: 3*4 <= 12"),
+        
+        // Complex boolean expressions
+        ("5 > 3 && 10 < 20", "Comparison && Comparison"),
+        ("5 == 5 || 3 > 10", "Comparison || Comparison"),
+        ("!(5 < 3) && 10 == 10", "NOT with AND"),
+        
+        // Type coercion in comparisons
+        ("5 > 2.5 && 10.0 == 10", "Mixed types in logical expression"),
+        
+        // Truthy/falsy evaluation
+        ("!0", "NOT on integer (falsy)"),
+        ("!5", "NOT on non-zero integer (truthy)"),
+        
+        // Edge cases
+        ("true && (5 > 3)", "Boolean && Comparison"),
+        ("false || (10 == 10)", "Boolean || Comparison"),
+        ("(3 < 5) == true", "Comparison result compared to boolean"),
     ];
 
     let mut total_tests = 0;
@@ -97,6 +126,7 @@ fn main() {
         println!();
     }
 
+    println!("═════════════════════════════════════");
     println!("═════════════════════════════════════");
     println!("Tests Completed: {}/{} passed", passed_tests, total_tests);
     println!("═════════════════════════════════════");

@@ -95,11 +95,12 @@ impl Parser {
                 }
                 return Some(ASTExpression::paranthesized(expression));
             },
-            TokenKind::Plus | TokenKind::Minus => {
+            TokenKind::Plus | TokenKind::Minus | TokenKind::Bang => {
                 let operator_token = self.consume()?.clone();
                 let kind = match operator_token.kind {
                     TokenKind::Plus => ASTUnaryOperatorKind::Plus,
                     TokenKind::Minus => ASTUnaryOperatorKind::Minus,
+                    TokenKind::Bang => ASTUnaryOperatorKind::LogicalNot,
                     _ => unreachable!(),
                 };
                 let operator = ASTUnaryOperator::new(kind, operator_token);
@@ -124,6 +125,16 @@ impl Parser {
             TokenKind::Caret => Some(ASTBinaryOperatorKind::BitwiseXor),
             TokenKind::LeftShift => Some(ASTBinaryOperatorKind::LeftShift),
             TokenKind::RightShift => Some(ASTBinaryOperatorKind::RightShift),
+            // Comparison operators
+            TokenKind::EqualEqual => Some(ASTBinaryOperatorKind::Equal),
+            TokenKind::BangEqual => Some(ASTBinaryOperatorKind::NotEqual),
+            TokenKind::Less => Some(ASTBinaryOperatorKind::Less),
+            TokenKind::Greater => Some(ASTBinaryOperatorKind::Greater),
+            TokenKind::LessEqual => Some(ASTBinaryOperatorKind::LessEqual),
+            TokenKind::GreaterEqual => Some(ASTBinaryOperatorKind::GreaterEqual),
+            // Logical operators
+            TokenKind::DoubleAmpersand => Some(ASTBinaryOperatorKind::LogicalAnd),
+            TokenKind::DoublePipe => Some(ASTBinaryOperatorKind::LogicalOr),
             _ => None,
         };
         return kind.map(|kind| ASTBinaryOperator::new(kind, token.clone()));

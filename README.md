@@ -1,26 +1,73 @@
-# Arc-compiler
+# Arc Compiler
 
-A simple expression evaluator written in Rust. This project serves as a learning exercise to understand the fundamentals of building a compiler. It can parse and evaluate basic arithmetic expressions.
+A learning-focused compiler project written in Rust that has evolved from a simple arithmetic evaluator into a comprehensive expression language with rich type system and professional error handling.
+
+## ✨ Current Features (Phase 1 Complete!)
+
+### 🔢 Arithmetic Operations
+- **Basic**: `+`, `-`, `*`, `/`
+- **Extended**: `%` (modulo), `**` (exponentiation)
+- **Bitwise**: `&`, `|`, `^`, `<<`, `>>`
+- **Unary**: `-x`, `+x`, `!x`
+
+### 📊 Rich Type System
+- **Integer**: Full precision integer arithmetic
+- **Float**: IEEE 754 floating-point numbers
+- **Boolean**: `true` and `false` with truthy/falsy conversion
+- **String**: String literals with comparison support
+- **Automatic type coercion**: Seamless int ↔ float conversions
+
+### 🔍 Comparison & Logical Operators
+- **Comparison**: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- **Logical**: `&&` (AND), `||` (OR), `!` (NOT)
+- **Short-circuit evaluation**: Efficient and safe evaluation
+
+### 🎨 Professional Error Handling
+- Line and column tracking
+- Colored terminal output (red errors, yellow warnings)
+- Source code snippets at error location
+- Helpful suggestions for fixing errors
+- Error recovery (continues after recoverable errors)
 
 ## How it Works
 
-The evaluator processes arithmetic expressions in a pipeline inspired by modern compilers:
+The compiler processes expressions through a three-stage pipeline:
 
-1.  **Lexical Analysis**: The `Lexer` scans the input string and converts it into a sequence of tokens. For example, the input `"7 - (30 + 7)"` is transformed into tokens representing numbers, operators, and parentheses.
+1.  **Lexical Analysis (Lexer)**: Scans input and produces tokens with position tracking
+2.  **Parsing**: Builds an Abstract Syntax Tree (AST) using precedence climbing
+3.  **Evaluation**: Traverses the AST with type-aware evaluation and error collection
 
-2.  **Parsing**: The `Parser` takes the stream of tokens and constructs an Abstract Syntax Tree (AST). The AST is a tree representation of the code's structure that respects operator precedence and grouping.
+## Example Usage
 
-3.  **Evaluation**: The `ASTEvaluator` traverses the AST to compute the final result of the expression. It recursively evaluates the nodes of the tree to produce a single numerical value.
+### Successful Evaluation
+```rust
+Input: 5 > 3 && 10.0 == 10
+Result: true
+Type: Boolean
+```
 
-The project also includes a `ASTPrintor` to visualize the structure of the AST.
+### Error Detection
+```
+Input: (5 + 3
+
+error: Expected closing parenthesis ')'
+  --> input:1:7
+1 | (5 + 3
+  |       ^
+  help: Add ')' to close the expression
+```
 
 ## Features
 
-*   **Arithmetic Operations**: Supports addition (`+`), subtraction (`-`), multiplication (`*`), and division (`/`).
-*   **Integer Literals**: Can parse and evaluate integer values.
-*   **Operator Precedence**: Correctly handles the order of operations (e.g., multiplication before addition).
-*   **Parentheses**: Supports grouping of expressions with `(` and `)`.
-
+*   **Arithmetic Operations**: Addition, subtraction, multiplication, division, modulo, exponentiation
+*   **Bitwise Operations**: AND, OR, XOR, left shift, right shift
+*   **Multiple Data Types**: Integers, floats, booleans, strings
+*   **Type Coercion**: Automatic conversion between compatible types
+*   **Comparison Operators**: All standard comparison operations
+*   **Logical Operators**: AND, OR, NOT with short-circuit evaluation
+*   **Operator Precedence**: 11 levels of precedence for correct evaluation order
+*   **Parentheses**: Grouping of expressions
+*   **Error Handling**: Professional diagnostics with source context
 ## Getting Started
 
 This section will guide you through running the expression evaluator on your local machine.
@@ -45,51 +92,59 @@ Make sure you have Rust and Cargo installed on your system. You can install them
 
 ### Example
 
-The `main` function in `src/main.rs` contains a hardcoded example expression:
+The `main` function in `src/main.rs` contains a comprehensive test suite with 42 test cases covering:
 
-```rust
-let input: &str = "7- (30 + 7) * 8/2";
+- Integer and float arithmetic
+- Comparison operations
+- Logical operations with short-circuit evaluation
+- Type coercion
+- Complex boolean expressions
+- Error handling demonstration
+
+Run `cargo run` to see all tests execute and the error handling system in action!
+
+## Project Structure
+
+```
+src/
+├── main.rs              # Test suite and demonstrations
+├── lib.rs               # Library interface
+└── ast/
+    ├── mod.rs          # AST node definitions (21 operators, 11 precedence levels)
+    ├── lexer.rs        # Tokenization with position tracking (33 token types)
+    ├── parser.rs       # Precedence-climbing parser with error recovery
+    ├── evaluator.rs    # Type-aware expression evaluator
+    ├── types.rs        # Value system and type coercion
+    └── error.rs        # Error reporting infrastructure (11 error types)
 ```
 
-When you run the project, it will perform the following steps:
+## Test Results
 
-1.  **Tokenization**: It will print the list of tokens generated from the input string.
-2.  **AST Visualization**: It will display a tree structure representing the parsed expression.
-3.  **Evaluation**: It will compute and print the final result.
+All 42 test cases pass successfully:
+- ✅ Integer arithmetic
+- ✅ Float arithmetic
+- ✅ Boolean operations
+- ✅ String comparisons
+- ✅ Type coercion
+- ✅ Short-circuit evaluation
+- ✅ Complex expressions
+- ✅ Error handling
 
-For the example input, the output will look like this:
+## Future Roadmap
 
-```
-Tokens: [Token { kind: Number(7), ... }, Token { kind: Minus, ... }, ...]
-Statement
-  Expression
-    Binary Expression
-      Operator: Minus
-      Expression
-        Number: 7
-      Expression
-        Binary Expression
-          Operator: Divide
-          Expression
-            Binary Expression
-              Operator: Multiply
-              Expression
-                Parenthesized Expression
-                  Expression
-                    Binary Expression
-                      Operator: Plus
-                      Expression
-                        Number: 30
-                      Expression
-                        Number: 7
-              Expression
-                Number: 8
-          Expression
-            Number: 2
-Last evaluated value: Some(-141)
-```
+See [FUTURE_SCOPE.md](FUTURE_SCOPE.md) for the complete development roadmap.
 
-You can modify the `input` variable in `src/main.rs` to evaluate different arithmetic expressions.
+**Phase 1: Foundation Building** ✅ COMPLETE
+- Extended arithmetic operations
+- Rich type system
+- Comparison & logical operators
+- Professional error handling
+
+**Phase 2: Language Features** (Coming Next)
+- Variables and assignment
+- Control flow (if/else, loops)
+- Functions and scope
+- More to come!
 
 ## Contributing
 

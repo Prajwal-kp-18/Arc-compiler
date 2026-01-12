@@ -26,6 +26,56 @@ impl ASTVisitor for ASTEvaluator {
     }
 
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
+        // Handle short-circuit evaluation for logical operators
+        match expr.operator.kind {
+            ASTBinaryOperatorKind::LogicalAnd => {
+                // Short-circuit: if left is false, don't evaluate right
+                self.visit_expression(&expr.left);
+                let left = match &self.last_value {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                
+                if !left.to_boolean() {
+                    self.last_value = Some(Value::Boolean(false));
+                    return;
+                }
+                
+                self.visit_expression(&expr.right);
+                let right = match &self.last_value {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                
+                self.last_value = Some(Value::Boolean(right.to_boolean()));
+                return;
+            },
+            ASTBinaryOperatorKind::LogicalOr => {
+                // Short-circuit: if left is true, don't evaluate right
+                self.visit_expression(&expr.left);
+                let left = match &self.last_value {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                
+                if left.to_boolean() {
+                    self.last_value = Some(Value::Boolean(true));
+                    return;
+                }
+                
+                self.visit_expression(&expr.right);
+                let right = match &self.last_value {
+                    Some(v) => v.clone(),
+                    None => return,
+                };
+                
+                self.last_value = Some(Value::Boolean(right.to_boolean()));
+                return;
+            },
+            _ => {}, // Continue with normal evaluation
+        }
+
+        // Normal evaluation for non-short-circuit operators
         self.visit_expression(&expr.left);
         let left = match &self.last_value {
             Some(v) => v.clone(),
@@ -215,6 +265,65 @@ impl ASTVisitor for ASTEvaluator {
                     }
                 }
             },
+            // Comparison operators
+            ASTBinaryOperatorKind::Equal => {
+                match left.equals(&right) {
+                    Ok(result) => Some(Value::Boolean(result)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            ASTBinaryOperatorKind::NotEqual => {
+                match left.equals(&right) {
+                    Ok(result) => Some(Value::Boolean(!result)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            ASTBinaryOperatorKind::Less => {
+                match left.compare(&right) {
+                    Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Less)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            ASTBinaryOperatorKind::Greater => {
+                match left.compare(&right) {
+                    Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Greater)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            ASTBinaryOperatorKind::LessEqual => {
+                match left.compare(&right) {
+                    Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Greater)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            ASTBinaryOperatorKind::GreaterEqual => {
+                match left.compare(&right) {
+                    Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Less)),
+                    Err(e) => {
+                        self.add_error(e);
+                        None
+                    }
+                }
+            },
+            // Logical operators are handled at the beginning with short-circuit
+            ASTBinaryOperatorKind::LogicalAnd | ASTBinaryOperatorKind::LogicalOr => {
+                unreachable!("Logical operators should be handled by short-circuit evaluation")
+            },
         };
     }
 
@@ -237,6 +346,9 @@ impl ASTVisitor for ASTEvaluator {
                     self.add_error(format!("Cannot negate {:?}", operand.get_type()));
                     None
                 }
+            },
+            ASTUnaryOperatorKind::LogicalNot => {
+                Some(Value::Boolean(!operand.to_boolean()))
             },
         };
     }

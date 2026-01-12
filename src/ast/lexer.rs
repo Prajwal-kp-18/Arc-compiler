@@ -16,6 +16,17 @@ pub enum TokenKind {
     Caret,
     LeftShift,
     RightShift,
+    // Comparison operators
+    EqualEqual,
+    BangEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    // Logical operators
+    DoubleAmpersand,
+    DoublePipe,
+    Bang,
     LeftParen,
     RightParen,
     Bad,
@@ -119,25 +130,65 @@ impl <'o> Lexer<'o> {
             },
             '/' => TokenKind::Slash,
             '%' => TokenKind::Percent,
-            '&' => TokenKind::Ampersand,
-            '|' => TokenKind::Pipe,
-            '^' => TokenKind::Caret,
-            '<' => {
-                // Check for << (left shift)
-                if self.current_char() == Some('<') {
+            '&' => {
+                // Check for && (logical AND)
+                if self.current_char() == Some('&') {
                     self.consume();
-                    TokenKind::LeftShift
+                    TokenKind::DoubleAmpersand
+                } else {
+                    TokenKind::Ampersand
+                }
+            },
+            '|' => {
+                // Check for || (logical OR)
+                if self.current_char() == Some('|') {
+                    self.consume();
+                    TokenKind::DoublePipe
+                } else {
+                    TokenKind::Pipe
+                }
+            },
+            '^' => TokenKind::Caret,
+            '!' => {
+                // Check for != (not equal)
+                if self.current_char() == Some('=') {
+                    self.consume();
+                    TokenKind::BangEqual
+                } else {
+                    TokenKind::Bang
+                }
+            },
+            '=' => {
+                // Check for == (equal)
+                if self.current_char() == Some('=') {
+                    self.consume();
+                    TokenKind::EqualEqual
                 } else {
                     TokenKind::Bad
                 }
             },
+            '<' => {
+                // Check for << (left shift) or <= (less or equal)
+                if self.current_char() == Some('<') {
+                    self.consume();
+                    TokenKind::LeftShift
+                } else if self.current_char() == Some('=') {
+                    self.consume();
+                    TokenKind::LessEqual
+                } else {
+                    TokenKind::Less
+                }
+            },
             '>' => {
-                // Check for >> (right shift)
+                // Check for >> (right shift) or >= (greater or equal)
                 if self.current_char() == Some('>') {
                     self.consume();
                     TokenKind::RightShift
+                } else if self.current_char() == Some('=') {
+                    self.consume();
+                    TokenKind::GreaterEqual
                 } else {
-                    TokenKind::Bad
+                    TokenKind::Greater
                 }
             },
             '(' => TokenKind::LeftParen,

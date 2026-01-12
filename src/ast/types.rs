@@ -69,6 +69,51 @@ impl Value {
             Value::String(_) => Err("Cannot convert string to integer for bitwise operations".to_string()),
         }
     }
+
+    /// Compare two values for equality
+    pub fn equals(&self, other: &Value) -> Result<bool, String> {
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(a == b),
+            (Value::Float(a), Value::Float(b)) => Ok((a - b).abs() < f64::EPSILON),
+            (Value::Boolean(a), Value::Boolean(b)) => Ok(a == b),
+            (Value::String(a), Value::String(b)) => Ok(a == b),
+            // Allow comparison between int and float
+            (Value::Integer(i), Value::Float(f)) | (Value::Float(f), Value::Integer(i)) => {
+                Ok((*i as f64 - f).abs() < f64::EPSILON)
+            },
+            _ => Err(format!("Cannot compare {:?} and {:?} for equality", self.get_type(), other.get_type())),
+        }
+    }
+
+    /// Compare two values with ordering
+    pub fn compare(&self, other: &Value) -> Result<std::cmp::Ordering, String> {
+        use std::cmp::Ordering;
+        
+        match (self, other) {
+            (Value::Integer(a), Value::Integer(b)) => Ok(a.cmp(b)),
+            (Value::Float(a), Value::Float(b)) => {
+                if a < b { Ok(Ordering::Less) }
+                else if a > b { Ok(Ordering::Greater) }
+                else { Ok(Ordering::Equal) }
+            },
+            (Value::Boolean(a), Value::Boolean(b)) => Ok(a.cmp(b)),
+            (Value::String(a), Value::String(b)) => Ok(a.cmp(b)),
+            // Allow comparison between int and float
+            (Value::Integer(i), Value::Float(f)) => {
+                let i_float = *i as f64;
+                if i_float < *f { Ok(Ordering::Less) }
+                else if i_float > *f { Ok(Ordering::Greater) }
+                else { Ok(Ordering::Equal) }
+            },
+            (Value::Float(f), Value::Integer(i)) => {
+                let i_float = *i as f64;
+                if f < &i_float { Ok(Ordering::Less) }
+                else if f > &i_float { Ok(Ordering::Greater) }
+                else { Ok(Ordering::Equal) }
+            },
+            _ => Err(format!("Cannot compare {:?} and {:?}", self.get_type(), other.get_type())),
+        }
+    }
 }
 
 impl fmt::Display for Value {

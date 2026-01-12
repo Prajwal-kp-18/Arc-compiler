@@ -177,13 +177,18 @@ impl ASTBinaryOperator {
 
     pub fn precedence(&self) -> u8 {
         match self.kind {
-            ASTBinaryOperatorKind::BitwiseOr => 1,
-            ASTBinaryOperatorKind::BitwiseXor => 2,
-            ASTBinaryOperatorKind::BitwiseAnd => 3,
-            ASTBinaryOperatorKind::LeftShift | ASTBinaryOperatorKind::RightShift => 4,
-            ASTBinaryOperatorKind::Plus | ASTBinaryOperatorKind::Minus => 5,
-            ASTBinaryOperatorKind::Multiply | ASTBinaryOperatorKind::Divide | ASTBinaryOperatorKind::Modulo => 6,
-            ASTBinaryOperatorKind::Exponentiation => 7,
+            ASTBinaryOperatorKind::LogicalOr => 1,
+            ASTBinaryOperatorKind::LogicalAnd => 2,
+            ASTBinaryOperatorKind::Equal | ASTBinaryOperatorKind::NotEqual => 3,
+            ASTBinaryOperatorKind::Less | ASTBinaryOperatorKind::Greater |
+            ASTBinaryOperatorKind::LessEqual | ASTBinaryOperatorKind::GreaterEqual => 4,
+            ASTBinaryOperatorKind::BitwiseOr => 5,
+            ASTBinaryOperatorKind::BitwiseXor => 6,
+            ASTBinaryOperatorKind::BitwiseAnd => 7,
+            ASTBinaryOperatorKind::LeftShift | ASTBinaryOperatorKind::RightShift => 8,
+            ASTBinaryOperatorKind::Plus | ASTBinaryOperatorKind::Minus => 9,
+            ASTBinaryOperatorKind::Multiply | ASTBinaryOperatorKind::Divide | ASTBinaryOperatorKind::Modulo => 10,
+            ASTBinaryOperatorKind::Exponentiation => 11,
         }
     }
 }
@@ -200,12 +205,23 @@ pub enum ASTBinaryOperatorKind {
     BitwiseXor,
     LeftShift,
     RightShift,
+    // Comparison operators
+    Equal,
+    NotEqual,
+    Less,
+    Greater,
+    LessEqual,
+    GreaterEqual,
+    // Logical operators
+    LogicalAnd,
+    LogicalOr,
 }
 
 #[derive(Debug)]
 pub enum ASTUnaryOperatorKind {
     Plus,
     Minus,
+    LogicalNot,
 }
 pub struct ASTNumberExpression {
     pub value: Value,
