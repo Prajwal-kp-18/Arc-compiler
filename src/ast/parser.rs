@@ -68,10 +68,24 @@ impl Parser {
 
     pub fn parse_primary_expression(&mut self) -> Option<ASTExpression> {
         let token: &Token = self.current()?;
-        match token.kind {
+        let token_kind = token.kind.clone();
+        
+        match token_kind {
             TokenKind::Number(number) => {
                 self.consume();
                 return Some(ASTExpression::number(number));
+            },
+            TokenKind::Float(float) => {
+                self.consume();
+                return Some(ASTExpression::float(float));
+            },
+            TokenKind::Boolean(boolean) => {
+                self.consume();
+                return Some(ASTExpression::boolean(boolean));
+            },
+            TokenKind::String(string) => {
+                self.consume();
+                return Some(ASTExpression::string(string));
             },
             TokenKind::LeftParen => {
                 self.consume();

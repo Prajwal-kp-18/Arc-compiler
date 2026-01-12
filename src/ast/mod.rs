@@ -1,8 +1,10 @@
 pub mod lexer;
 pub mod parser;
 pub mod evaluator;
+pub mod types;
 
 use crate::ast::lexer::Token;
+use crate::ast::types::Value;
 
 pub struct Ast {
     pub statements: Vec<ASTStatement>,
@@ -96,7 +98,7 @@ impl ASTVisitor for ASTPrintor {
     }
 
     fn visit_number(&mut self, number: &ASTNumberExpression) {
-        self.print_with_indent(&format!("Number: {}", number.number));
+        self.print_with_indent(&format!("Literal: {:?}", number.value));
     }
 
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
@@ -206,7 +208,7 @@ pub enum ASTUnaryOperatorKind {
     Minus,
 }
 pub struct ASTNumberExpression {
-    number: i64,
+    pub value: Value,
 }
 
 pub struct ASTParanthesizedExpression {
@@ -238,8 +240,24 @@ impl ASTExpression {
         ASTExpression { kind }
     }
 
+    pub fn literal(value: Value) -> Self {
+        ASTExpression::new(ASTExpressionKind::Number(ASTNumberExpression { value }))
+    }
+
     pub fn number(number: i64) -> Self {
-        ASTExpression::new(ASTExpressionKind::Number(ASTNumberExpression { number }))
+        ASTExpression::literal(Value::Integer(number))
+    }
+
+    pub fn float(float: f64) -> Self {
+        ASTExpression::literal(Value::Float(float))
+    }
+
+    pub fn boolean(boolean: bool) -> Self {
+        ASTExpression::literal(Value::Boolean(boolean))
+    }
+
+    pub fn string(string: String) -> Self {
+        ASTExpression::literal(Value::String(string))
     }
 
     pub fn binary(operator: ASTBinaryOperator, left: ASTExpression, right: ASTExpression) -> Self {

@@ -2,6 +2,9 @@
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Number(i64),
+    Float(f64),
+    Boolean(bool),
+    String(String),
     Plus,
     Minus,
     Asterisk,
@@ -18,15 +21,7 @@ pub enum TokenKind {
     Bad,
     EOF,
     Whitespace,
-    // Identifier,
-    // Number,
-    // String,
-    // Keyword,
-    // Operator,
-    // Punctuation,
-    // Whitespace,
-    // Comment,
-    // Error,
+    Identifier(String),
 }  
 
 #[derive(Debug, PartialEq, Clone)]
@@ -76,7 +71,6 @@ impl <'o> Lexer<'o> {
             self.current_pos += 1;
             return Some(Token::new(
                 TokenKind::EOF,
-                // doubt
                 TextSpan::new(0,0,'\u{0000}'.to_string())
             ))
         }
@@ -86,11 +80,14 @@ impl <'o> Lexer<'o> {
             let mut kind = TokenKind::Bad;
 
             if Self::is_number_start(&c) {
-                let number: i64 = self.consume_number();
-                kind = TokenKind::Number(number);
+                kind = self.consume_number_or_float();
             } else if Self::is_whitespace(&c) {
                 self.consume();
                 kind = TokenKind::Whitespace;
+            } else if c == '"' {
+                kind = self.consume_string();
+            } else if Self::is_identifier_start(&c) {
+                kind = self.consume_identifier();
             } else {
                 kind = self.consume_punctuation();
             }
@@ -153,6 +150,14 @@ impl <'o> Lexer<'o> {
         c.is_digit(10)
     }
 
+    pub fn is_identifier_start(c: &char) -> bool {
+        c.is_alphabetic() || *c == '_'
+    }
+
+    pub fn is_identifier_continue(c: &char) -> bool {
+        c.is_alphanumeric() || *c == '_'
+    }
+
     pub fn current_char(&self) -> Option<char> {
         self.input.chars().nth(self.current_pos) 
     }
@@ -179,5 +184,97 @@ impl <'o> Lexer<'o> {
             number = number * 10 + c.to_digit(10).unwrap() as i64;
         }
         number
+    }
+
+    pub fn consume_number_or_float(&mut self) -> TokenKind {
+        let mut number_str = String::new();
+        let mut is_float = false;
+        
+        // Consume integer part
+        while let Some(c) = self.current_char() {
+            if c.is_digit(10) {
+                number_str.push(c);
+                self.consume();
+            } else if c == '.' && !is_float {
+                // Check if next char is a digit (to distinguish from method calls)
+                if let Some(next_c) = self.peek_char(1) {
+                    if next_c.is_digit(10) {
+                        is_float = true;
+                        number_str.push(c);
+                        self.consume();
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        
+        if is_float {
+            TokenKind::Float(number_str.parse().unwrap_or(0.0))
+        } else {
+            TokenKind::Number(number_str.parse().unwrap_or(0))
+        }
+    }
+
+    pub fn consume_string(&mut self) -> TokenKind {
+        self.consume(); // consume opening quote
+        let mut string = String::new();
+        
+        while let Some(c) = self.current_char() {
+            if c == '"' {
+                self.consume(); // consume closing quote
+                break;
+            } else if c == '\\' {
+                self.consume();
+                // Handle escape sequences
+                if let Some(escaped) = self.current_char() {
+                    self.consume();
+                    match escaped {
+                        'n' => string.push('\n'),
+                        't' => string.push('\t'),
+                        'r' => string.push('\r'),
+                        '\\' => string.push('\\'),
+                        '"' => string.push('"'),
+                        _ => {
+                            string.push('\\');
+                            string.push(escaped);
+                        }
+                    }
+                }
+            } else {
+                string.push(c);
+                self.consume();
+            }
+        }
+        
+        TokenKind::String(string)
+    }
+
+    pub fn consume_identifier(&mut self) -> TokenKind {
+        let mut identifier = String::new();
+        
+        while let Some(c) = self.current_char() {
+            if Self::is_identifier_continue(&c) {
+                identifier.push(c);
+                self.consume();
+            } else {
+                break;
+            }
+        }
+        
+        // Check for keywords (true, false)
+        match identifier.as_str() {
+            "true" => TokenKind::Boolean(true),
+            "false" => TokenKind::Boolean(false),
+            _ => TokenKind::Identifier(identifier),
+        }
+    }
+
+    pub fn peek_char(&self, offset: usize) -> Option<char> {
+        self.input.chars().nth(self.current_pos + offset)
     }
 }
