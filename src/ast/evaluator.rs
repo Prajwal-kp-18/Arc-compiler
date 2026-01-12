@@ -1,4 +1,4 @@
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind};
 
 
 pub struct ASTEvaluator {
@@ -27,7 +27,23 @@ impl ASTVisitor for ASTEvaluator {
             ASTBinaryOperatorKind::Minus => Some(left - right),
             ASTBinaryOperatorKind::Multiply => Some(left * right),
             ASTBinaryOperatorKind::Divide => Some(left / right),
-            _ => None,
+            ASTBinaryOperatorKind::Modulo => Some(left % right),
+            ASTBinaryOperatorKind::Exponentiation => Some(left.pow(right as u32)),
+            ASTBinaryOperatorKind::BitwiseAnd => Some(left & right),
+            ASTBinaryOperatorKind::BitwiseOr => Some(left | right),
+            ASTBinaryOperatorKind::BitwiseXor => Some(left ^ right),
+            ASTBinaryOperatorKind::LeftShift => Some(left << right),
+            ASTBinaryOperatorKind::RightShift => Some(left >> right),
+        };
+    }
+
+    fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
+        self.visit_expression(&unary_expr.operand);
+        let operand = self.last_value.unwrap();
+        
+        self.last_value = match unary_expr.operator.kind {
+            ASTUnaryOperatorKind::Plus => Some(operand),
+            ASTUnaryOperatorKind::Minus => Some(-operand),
         };
     }
 }

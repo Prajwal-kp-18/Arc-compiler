@@ -6,6 +6,13 @@ pub enum TokenKind {
     Minus,
     Asterisk,
     Slash,
+    Percent,
+    DoubleStar,
+    Ampersand,
+    Pipe,
+    Caret,
+    LeftShift,
+    RightShift,
     LeftParen,
     RightParen,
     Bad,
@@ -104,8 +111,38 @@ impl <'o> Lexer<'o> {
         match c {
             '+' => TokenKind::Plus,
             '-' => TokenKind::Minus,
-            '*' => TokenKind::Asterisk,
+            '*' => {
+                // Check for ** (exponentiation)
+                if self.current_char() == Some('*') {
+                    self.consume();
+                    TokenKind::DoubleStar
+                } else {
+                    TokenKind::Asterisk
+                }
+            },
             '/' => TokenKind::Slash,
+            '%' => TokenKind::Percent,
+            '&' => TokenKind::Ampersand,
+            '|' => TokenKind::Pipe,
+            '^' => TokenKind::Caret,
+            '<' => {
+                // Check for << (left shift)
+                if self.current_char() == Some('<') {
+                    self.consume();
+                    TokenKind::LeftShift
+                } else {
+                    TokenKind::Bad
+                }
+            },
+            '>' => {
+                // Check for >> (right shift)
+                if self.current_char() == Some('>') {
+                    self.consume();
+                    TokenKind::RightShift
+                } else {
+                    TokenKind::Bad
+                }
+            },
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
             _ => TokenKind::Bad,

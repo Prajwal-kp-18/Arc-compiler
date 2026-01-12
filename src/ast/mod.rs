@@ -50,6 +50,9 @@ pub trait ASTVisitor {
             ASTExpressionKind::Paranthesized(paren_expr) => {
                 self.visit_parenthesized_expression(paren_expr);
             }
+            ASTExpressionKind::Unary(unary_expr) => {
+                self.visit_unary_expression(unary_expr);
+            }
         }
     }
     fn visit_expression(&mut self, expression: &ASTExpression){
@@ -64,6 +67,10 @@ pub trait ASTVisitor {
     }
     fn visit_parenthesized_expression(&mut self, paren_expr: &ASTParanthesizedExpression) {
         self.visit_expression(&paren_expr.expression);
+    }
+
+    fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
+        self.do_visit_expression(&unary_expr.operand);
     }
 }
 
@@ -108,6 +115,14 @@ impl ASTVisitor for ASTPrintor {
         self.indent -= LEVEL_INDENT;
     }
 
+    fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
+        self.print_with_indent("Unary Expression");
+        self.indent += LEVEL_INDENT;
+        self.print_with_indent(&format!("Operator: {:?}", unary_expr.operator.kind));
+        self.visit_expression(&unary_expr.operand);
+        self.indent -= LEVEL_INDENT;
+    }
+
 
 }
 
@@ -139,6 +154,7 @@ pub enum ASTExpressionKind {
     Number(ASTNumberExpression),
     Binary(ASTBinaryExpression),   
     Paranthesized(ASTParanthesizedExpression),
+    Unary(ASTUnaryExpression),
 }
 
 pub struct ASTBinaryExpression {
@@ -159,8 +175,13 @@ impl ASTBinaryOperator {
 
     pub fn precedence(&self) -> u8 {
         match self.kind {
-            ASTBinaryOperatorKind::Plus | ASTBinaryOperatorKind::Minus => 1,
-            ASTBinaryOperatorKind::Multiply | ASTBinaryOperatorKind::Divide => 2,
+            ASTBinaryOperatorKind::BitwiseOr => 1,
+            ASTBinaryOperatorKind::BitwiseXor => 2,
+            ASTBinaryOperatorKind::BitwiseAnd => 3,
+            ASTBinaryOperatorKind::LeftShift | ASTBinaryOperatorKind::RightShift => 4,
+            ASTBinaryOperatorKind::Plus | ASTBinaryOperatorKind::Minus => 5,
+            ASTBinaryOperatorKind::Multiply | ASTBinaryOperatorKind::Divide | ASTBinaryOperatorKind::Modulo => 6,
+            ASTBinaryOperatorKind::Exponentiation => 7,
         }
     }
 }
@@ -170,6 +191,19 @@ pub enum ASTBinaryOperatorKind {
     Minus,
     Multiply,
     Divide,
+    Modulo,
+    Exponentiation,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    LeftShift,
+    RightShift,
+}
+
+#[derive(Debug)]
+pub enum ASTUnaryOperatorKind {
+    Plus,
+    Minus,
 }
 pub struct ASTNumberExpression {
     number: i64,
@@ -178,6 +212,23 @@ pub struct ASTNumberExpression {
 pub struct ASTParanthesizedExpression {
     expression: Box<ASTExpression>,
 }
+
+pub struct ASTUnaryExpression {
+    operator: ASTUnaryOperator,
+    operand: Box<ASTExpression>,
+}
+
+pub struct ASTUnaryOperator {
+    pub kind: ASTUnaryOperatorKind,
+    pub token: Token,
+}
+
+impl ASTUnaryOperator {
+    pub fn new(kind: ASTUnaryOperatorKind, token: Token) -> Self {
+        ASTUnaryOperator { kind, token }
+    }
+}
+
 pub struct ASTExpression {
     kind: ASTExpressionKind,
 }
@@ -197,5 +248,9 @@ impl ASTExpression {
 
     pub fn paranthesized(expression: ASTExpression) -> Self {
         ASTExpression::new(ASTExpressionKind::Paranthesized(ASTParanthesizedExpression { expression: Box::new(expression) }))
+    }
+
+    pub fn unary(operator: ASTUnaryOperator, operand: ASTExpression) -> Self {
+        ASTExpression::new(ASTExpressionKind::Unary(ASTUnaryExpression { operator, operand: Box::new(operand) }))
     }
 }

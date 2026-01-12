@@ -1,6 +1,8 @@
 use crate::ast::lexer::Token;
 use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
+use crate::ast::ASTUnaryOperator;
+use crate::ast::ASTUnaryOperatorKind;
 use crate::ast::{ASTStatement, ASTExpression};
 use crate::ast::lexer::TokenKind;
 pub struct Parser {
@@ -65,17 +67,30 @@ impl Parser {
     }
 
     pub fn parse_primary_expression(&mut self) -> Option<ASTExpression> {
-        let token: &Token = self.consume()?;
+        let token: &Token = self.current()?;
         match token.kind {
             TokenKind::Number(number) => {
+                self.consume();
                 return Some(ASTExpression::number(number));
             },
             TokenKind::LeftParen => {
+                self.consume();
                 let expression: ASTExpression = self.parse_expression()?;
                 if self.consume()?.kind != TokenKind::RightParen {
                     panic!("Expected right parenthesis");
                 }
-                return Some(ASTExpression::paranthesized(expression)    );
+                return Some(ASTExpression::paranthesized(expression));
+            },
+            TokenKind::Plus | TokenKind::Minus => {
+                let operator_token = self.consume()?.clone();
+                let kind = match operator_token.kind {
+                    TokenKind::Plus => ASTUnaryOperatorKind::Plus,
+                    TokenKind::Minus => ASTUnaryOperatorKind::Minus,
+                    _ => unreachable!(),
+                };
+                let operator = ASTUnaryOperator::new(kind, operator_token);
+                let operand = self.parse_primary_expression()?;
+                return Some(ASTExpression::unary(operator, operand));
             },
             _ => None,
         }
@@ -88,6 +103,13 @@ impl Parser {
             TokenKind::Minus => Some(ASTBinaryOperatorKind::Minus),
             TokenKind::Asterisk => Some(ASTBinaryOperatorKind::Multiply),
             TokenKind::Slash => Some(ASTBinaryOperatorKind::Divide),
+            TokenKind::Percent => Some(ASTBinaryOperatorKind::Modulo),
+            TokenKind::DoubleStar => Some(ASTBinaryOperatorKind::Exponentiation),
+            TokenKind::Ampersand => Some(ASTBinaryOperatorKind::BitwiseAnd),
+            TokenKind::Pipe => Some(ASTBinaryOperatorKind::BitwiseOr),
+            TokenKind::Caret => Some(ASTBinaryOperatorKind::BitwiseXor),
+            TokenKind::LeftShift => Some(ASTBinaryOperatorKind::LeftShift),
+            TokenKind::RightShift => Some(ASTBinaryOperatorKind::RightShift),
             _ => None,
         };
         return kind.map(|kind| ASTBinaryOperator::new(kind, token.clone()));
