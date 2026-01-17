@@ -2,27 +2,27 @@
 
 A learning-focused compiler project written in Rust that has evolved from a simple arithmetic evaluator into a comprehensive expression language with rich type system and professional error handling.
 
-## ✨ Current Features (Phase 1 Complete!)
+## Current Features (Phase 1 Complete)
 
-### 🔢 Arithmetic Operations
+### Arithmetic Operations
 - **Basic**: `+`, `-`, `*`, `/`
 - **Extended**: `%` (modulo), `**` (exponentiation)
 - **Bitwise**: `&`, `|`, `^`, `<<`, `>>`
 - **Unary**: `-x`, `+x`, `!x`
 
-### 📊 Rich Type System
+### Rich Type System
 - **Integer**: Full precision integer arithmetic
 - **Float**: IEEE 754 floating-point numbers
 - **Boolean**: `true` and `false` with truthy/falsy conversion
 - **String**: String literals with comparison support
 - **Automatic type coercion**: Seamless int ↔ float conversions
 
-### 🔍 Comparison & Logical Operators
+### Comparison & Logical Operators
 - **Comparison**: `==`, `!=`, `<`, `>`, `<=`, `>=`
 - **Logical**: `&&` (AND), `||` (OR), `!` (NOT)
 - **Short-circuit evaluation**: Efficient and safe evaluation
 
-### 🎨 Professional Error Handling
+### Professional Error Handling
 - Line and column tracking
 - Colored terminal output (red errors, yellow warnings)
 - Source code snippets at error location
@@ -121,20 +121,20 @@ src/
 ## Test Results
 
 All 42 test cases pass successfully:
-- ✅ Integer arithmetic
-- ✅ Float arithmetic
-- ✅ Boolean operations
-- ✅ String comparisons
-- ✅ Type coercion
-- ✅ Short-circuit evaluation
-- ✅ Complex expressions
-- ✅ Error handling
+- Integer arithmetic
+- Float arithmetic
+- Boolean operations
+- String comparisons
+- Type coercion
+- Short-circuit evaluation
+- Complex expressions
+- Error handling
 
 ## Future Roadmap
 
 See [FUTURE_SCOPE.md](FUTURE_SCOPE.md) for the complete development roadmap.
 
-**Phase 1: Foundation Building** ✅ COMPLETE
+**Phase 1: Foundation Building** - COMPLETE
 - Extended arithmetic operations
 - Rich type system
 - Comparison & logical operators
