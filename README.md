@@ -138,8 +138,8 @@ Make sure you have Rust and Cargo installed on your system. You can install them
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/Prajwal-kp-18/rust-compiler.git
-    cd rust-compiler
+    git clone https://github.com/Prajwal-kp-18/Arc-compiler
+    cd Arc-compiler
     ```
 
 2.  **Build the project**:
@@ -204,22 +204,6 @@ All 42 test cases pass successfully:
 - Short-circuit evaluation
 - Complex expressions
 - Error handling
-
-## Future Roadmap
-
-See [FUTURE_SCOPE.md](FUTURE_SCOPE.md) for the complete development roadmap.
-
-**Phase 1: Foundation Building** - COMPLETE
-- Extended arithmetic operations
-- Rich type system
-- Comparison & logical operators
-- Professional error handling
-
-**Phase 2: Language Features** (Coming Next)
-- Variables and assignment
-- Control flow (if/else, loops)
-- Functions and scope
-- More to come!
 
 ## Contributing
 
