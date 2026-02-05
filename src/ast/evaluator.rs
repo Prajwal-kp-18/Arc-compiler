@@ -1,10 +1,12 @@
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression};
 use crate::ast::types::Value;
+use crate::ast::symbol_table::SymbolTable;
 
 
 pub struct ASTEvaluator {
     pub last_value: Option<Value>,
     pub errors: Vec<String>,
+    pub symbol_table: SymbolTable,
 }
 
 impl ASTEvaluator {
@@ -12,6 +14,7 @@ impl ASTEvaluator {
         Self { 
             last_value: None,
             errors: Vec::new(),
+            symbol_table: SymbolTable::new(),
         }
     }
 
@@ -352,4 +355,87 @@ impl ASTVisitor for ASTEvaluator {
             },
         };
     }
+
+    fn visit_identifier(&mut self, ident: &ASTIdentifierExpression) {
+        match self.symbol_table.get_value(&ident.name) {
+            Ok(value) => self.last_value = Some(value),
+            Err(e) => {
+                self.add_error(e);
+                self.last_value = None;
+            }
+        }
+    }
+
+    fn visit_variable_declaration(&mut self, decl: &ASTVariableDeclaration) {
+        // Evaluate the initializer
+        self.visit_expression(&decl.initializer);
+        
+        match &self.last_value {
+            Some(value) => {
+                if let Err(e) = self.symbol_table.define(
+                    decl.name.clone(),
+                    value.clone(),
+                    decl.is_mutable
+                ) {
+                    self.add_error(e);
+                }
+            }
+            None => {
+                self.add_error(format!("Failed to evaluate initializer for variable '{}'", decl.name));
+            }
+        }
+    }
+
+    fn visit_assignment(&mut self, assign: &ASTAssignment) {
+        // Evaluate the value expression
+        self.visit_expression(&assign.value);
+        
+        match &self.last_value {
+            Some(value) => {
+                if let Err(e) = self.symbol_table.assign(&assign.name, value.clone()) {
+                    self.add_error(e);
+                }
+            }
+            None => {
+                self.add_error(format!("Failed to evaluate value for assignment to '{}'", assign.name));
+            }
+        }
+    }
+
+    fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
+        match func_call.name.as_str() {
+            "print" => {
+                // Evaluate all arguments and print them
+                let mut values = Vec::new();
+                for arg in &func_call.arguments {
+                    self.visit_expression(arg);
+                    if let Some(value) = &self.last_value {
+                        values.push(value.clone());
+                    }
+                }
+                
+                // Print the values
+                for (i, value) in values.iter().enumerate() {
+                    if i > 0 {
+                        print!(" ");
+                    }
+                    match value {
+                        Value::Integer(n) => print!("{}", n),
+                        Value::Float(f) => print!("{}", f),
+                        Value::Boolean(b) => print!("{}", b),
+                        Value::String(s) => print!("{}", s),
+                    }
+                }
+                println!();
+                
+                // print() doesn't return a value
+                self.last_value = None;
+            }
+            _ => {
+                self.add_error(format!("Unknown function: '{}'", func_call.name));
+                self.last_value = None;
+            }
+        }
+    }
 }
+

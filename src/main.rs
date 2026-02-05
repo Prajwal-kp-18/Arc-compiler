@@ -2,132 +2,165 @@ mod ast;
 use ast::lexer::Token;
 use ast::Ast;
 use ast::parser::Parser;
+use ast::evaluator::ASTEvaluator;
+use ast::ASTVisitor;
+use std::io::{self, Write, BufRead};
+use std::env;
+use std::fs;
 
 fn main() {
-    println!("=== Arc Compiler - Comparison & Logical Operators Test ===\n");
+    let args: Vec<String> = env::args().collect();
+    
+    if args.len() > 1 {
+        // File execution mode
+        let filename = &args[1];
+        execute_file(filename);
+    } else {
+        // REPL mode
+        run_repl();
+    }
+}
 
-    // Test cases for comparison and logical operators
-    let test_cases = vec![
-        // Comparison operators with integers
-        ("5 == 5", "Integer equality: 5 == 5"),
-        ("5 == 3", "Integer inequality: 5 == 3"),
-        ("5 != 3", "Not equal: 5 != 3"),
-        ("10 > 5", "Greater than: 10 > 5"),
-        ("3 < 7", "Less than: 3 < 7"),
-        ("5 >= 5", "Greater or equal: 5 >= 5"),
-        ("3 <= 5", "Less or equal: 3 <= 5"),
-        
-        // Comparison with floats
-        ("3.14 == 3.14", "Float equality"),
-        ("2.5 > 1.5", "Float greater than"),
-        ("1.0 < 2.0", "Float less than"),
-        
-        // Mixed type comparisons (int and float)
-        ("5 == 5.0", "Mixed equality: 5 == 5.0"),
-        ("10 > 5.5", "Mixed comparison: 10 > 5.5"),
-        ("3.5 < 7", "Mixed comparison: 3.5 < 7"),
-        
-        // Boolean comparisons
-        ("true == true", "Boolean equality"),
-        ("true != false", "Boolean inequality"),
-        
-        // String comparisons
-        ("\"hello\" == \"hello\"", "String equality"),
-        ("\"abc\" < \"xyz\"", "String less than"),
-        
-        // Logical AND with short-circuit
-        ("true && true", "Logical AND: true && true"),
-        ("true && false", "Logical AND: true && false"),
-        ("false && true", "Logical AND: false && true (short-circuit)"),
-        
-        // Logical OR with short-circuit
-        ("true || false", "Logical OR: true || false (short-circuit)"),
-        ("false || true", "Logical OR: false || true"),
-        ("false || false", "Logical OR: false || false"),
-        
-        // Logical NOT
-        ("!true", "Logical NOT: !true"),
-        ("!false", "Logical NOT: !false"),
-        ("!(5 > 3)", "Logical NOT with expression"),
-        
-        // Complex logical expressions
-        ("true && true && true", "Multiple AND"),
-        ("false || false || true", "Multiple OR"),
-        ("true && false || true", "Mixed: true && false || true"),
-        ("(true || false) && true", "Parenthesized: (true || false) && true"),
-        
-        // Comparison with arithmetic
-        ("5 + 3 == 8", "Arithmetic in comparison: 5+3 == 8"),
-        ("10 - 2 > 5", "Arithmetic in comparison: 10-2 > 5"),
-        ("3 * 4 <= 12", "Arithmetic in comparison: 3*4 <= 12"),
-        
-        // Complex boolean expressions
-        ("5 > 3 && 10 < 20", "Comparison && Comparison"),
-        ("5 == 5 || 3 > 10", "Comparison || Comparison"),
-        ("!(5 < 3) && 10 == 10", "NOT with AND"),
-        
-        // Type coercion in comparisons
-        ("5 > 2.5 && 10.0 == 10", "Mixed types in logical expression"),
-        
-        // Truthy/falsy evaluation
-        ("!0", "NOT on integer (falsy)"),
-        ("!5", "NOT on non-zero integer (truthy)"),
-        
-        // Edge cases
-        ("true && (5 > 3)", "Boolean && Comparison"),
-        ("false || (10 == 10)", "Boolean || Comparison"),
-        ("(3 < 5) == true", "Comparison result compared to boolean"),
-    ];
-
-    let mut total_tests = 0;
-    let mut passed_tests = 0;
-
-    for (input, description) in test_cases {
-        total_tests += 1;
-        println!("─────────────────────────────────────");
-        println!("Test: {}", description);
-        println!("Input: {}", input);
-        
-        let mut lexer = ast::lexer::Lexer::new(input);
-        let mut tokens: Vec<Token> = Vec::new();
-        while let Some(token) = lexer.next_token() {
-            tokens.push(token);
+fn execute_file(filename: &str) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
         }
-
-        let mut ast: Ast = Ast::new();
-        let mut parser = Parser::new(tokens);
+    };
+    
+    println!("=== Executing {} ===", filename);
+    let mut evaluator = ASTEvaluator::new();
+    
+    for (line_num, line) in contents.lines().enumerate() {
+        let line = line.trim();
         
-        match parser.next_statement() {
-            Some(statement) => {
-                ast.add_statement(statement);
+        // Skip empty lines and comments
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        
+        execute_line(line, &mut evaluator, line_num + 1);
+    }
+    
+    if !evaluator.errors.is_empty() {
+        println!("\n=== Errors ===");
+        for error in &evaluator.errors {
+            eprintln!("{}", error);
+        }
+    }
+}
+
+fn execute_line(input: &str, evaluator: &mut ASTEvaluator, line_num: usize) {
+    let mut lexer = ast::lexer::Lexer::new(input);
+    let mut tokens: Vec<Token> = Vec::new();
+    while let Some(token) = lexer.next_token() {
+        tokens.push(token);
+    }
+
+    let mut ast: Ast = Ast::new();
+    let mut parser = Parser::new(tokens);
+    
+    match parser.next_statement() {
+        Some(statement) => {
+            ast.add_statement(statement);
+            let error_count_before = evaluator.errors.len();
+            ast.visit(evaluator);
+            let error_count_after = evaluator.errors.len();
+            
+            if error_count_after > error_count_before {
+                eprintln!("Line {}: Error occurred", line_num);
+            }
+        }
+        None => {
+            if !input.is_empty() {
+                eprintln!("Line {}: Parse error", line_num);
+            }
+        }
+    }
+}
+
+fn run_repl() {
+    println!("=== Arc Compiler REPL ===");
+    println!("Type expressions to evaluate them. Type 'exit' or 'quit' to exit.\n");
+    println!("Examples:");
+    println!("  let x = 10");
+    println!("  x + 5");
+    println!("  print(x)");
+    println!("  // This is a comment");
+    println!("  const pi = 3.14\n");
+
+    let mut evaluator = ASTEvaluator::new();
+    let stdin = io::stdin();
+    
+    loop {
+        print!(">> ");
+        io::stdout().flush().unwrap();
+        
+        let mut input = String::new();
+        match stdin.read_line(&mut input) {
+            Ok(_) => {
+                let input = input.trim();
                 
-                let mut evaluator = ast::evaluator::ASTEvaluator::new();
-                ast.visit(&mut evaluator);
-                
-                if let Some(value) = &evaluator.last_value {
-                    println!("Result: {}", value);
-                    println!("Type: {}", value.get_type());
-                    passed_tests += 1;
-                } else {
-                    println!("Result: Error");
+                // Exit commands
+                if input == "exit" || input == "quit" {
+                    println!("ThankYou!");
+                    break;
                 }
                 
-                if !evaluator.errors.is_empty() {
-                    println!("Errors:");
-                    for error in &evaluator.errors {
-                        println!("  - {}", error);
+                // Skip empty lines
+                if input.is_empty() {
+                    continue;
+                }
+                
+                // Tokenize
+                let mut lexer = ast::lexer::Lexer::new(input);
+                let mut tokens: Vec<Token> = Vec::new();
+                while let Some(token) = lexer.next_token() {
+                    tokens.push(token);
+                }
+
+                // Parse
+                let mut ast: Ast = Ast::new();
+                let mut parser = Parser::new(tokens);
+                
+                match parser.next_statement() {
+                    Some(statement) => {
+                        ast.add_statement(statement);
+                        
+                        // Evaluate
+                        let error_count_before = evaluator.errors.len();
+                        ast.visit(&mut evaluator);
+                        let error_count_after = evaluator.errors.len();
+                        
+                        // Display result
+                        if error_count_after > error_count_before {
+                            println!("Error:");
+                            for i in error_count_before..error_count_after {
+                                println!("  {}", evaluator.errors[i]);
+                            }
+                        } else {
+                            match &evaluator.last_value {
+                                Some(value) => {
+                                    println!("{:?} : {:?}", value, value.get_type());
+                                }
+                                None => {
+                                    // Statement executed without producing a value
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        println!("Parse error: Invalid syntax");
                     }
                 }
-            },
-            None => {
-                println!("Result: Parse error");
+            }
+            Err(error) => {
+                println!("Error reading input: {}", error);
+                break;
             }
         }
         println!();
     }
-
-    println!("═════════════════════════════════════");
-    println!("═════════════════════════════════════");
-    println!("Tests Completed: {}/{} passed", passed_tests, total_tests);
-    println!("═════════════════════════════════════");
 }

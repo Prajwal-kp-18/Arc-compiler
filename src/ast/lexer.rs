@@ -29,6 +29,14 @@ pub enum TokenKind {
     Bang,
     LeftParen,
     RightParen,
+    Comma,
+    LeftBrace,
+    RightBrace,
+    // Assignment and keywords
+    Equal,
+    Let,
+    Const,
+    Semicolon,
     Bad,
     EOF,
     Whitespace,
@@ -128,7 +136,20 @@ impl <'o> Lexer<'o> {
                     TokenKind::Asterisk
                 }
             },
-            '/' => TokenKind::Slash,
+            '/' => {
+                // Check for // (single-line comment) or /* (multi-line comment)
+                if self.current_char() == Some('/') {
+                    self.consume(); // consume second /
+                    self.consume_single_line_comment();
+                    TokenKind::Whitespace
+                } else if self.current_char() == Some('*') {
+                    self.consume(); // consume *
+                    self.consume_multi_line_comment();
+                    TokenKind::Whitespace
+                } else {
+                    TokenKind::Slash
+                }
+            },
             '%' => TokenKind::Percent,
             '&' => {
                 // Check for && (logical AND)
@@ -164,9 +185,10 @@ impl <'o> Lexer<'o> {
                     self.consume();
                     TokenKind::EqualEqual
                 } else {
-                    TokenKind::Bad
+                    TokenKind::Equal
                 }
             },
+            ';' => TokenKind::Semicolon,
             '<' => {
                 // Check for << (left shift) or <= (less or equal)
                 if self.current_char() == Some('<') {
@@ -193,6 +215,9 @@ impl <'o> Lexer<'o> {
             },
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
+            ',' => TokenKind::Comma,
+            '{' => TokenKind::LeftBrace,
+            '}' => TokenKind::RightBrace,
             _ => TokenKind::Bad,
         }
     }
@@ -317,15 +342,39 @@ impl <'o> Lexer<'o> {
             }
         }
         
-        // Check for keywords (true, false)
+        // Check for keywords (true, false, let, const)
         match identifier.as_str() {
             "true" => TokenKind::Boolean(true),
             "false" => TokenKind::Boolean(false),
+            "let" => TokenKind::Let,
+            "const" => TokenKind::Const,
             _ => TokenKind::Identifier(identifier),
         }
     }
 
     pub fn peek_char(&self, offset: usize) -> Option<char> {
         self.input.chars().nth(self.current_pos + offset)
+    }
+
+    pub fn consume_single_line_comment(&mut self) {
+        // Consume until newline or end of input
+        while let Some(c) = self.current_char() {
+            if c == '\n' {
+                break;
+            }
+            self.consume();
+        }
+    }
+
+    pub fn consume_multi_line_comment(&mut self) {
+        // Consume until */ or end of input
+        while let Some(c) = self.current_char() {
+            if c == '*' && self.peek_char(1) == Some('/') {
+                self.consume(); // consume *
+                self.consume(); // consume /
+                break;
+            }
+            self.consume();
+        }
     }
 }

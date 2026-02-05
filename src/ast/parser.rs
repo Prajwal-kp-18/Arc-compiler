@@ -3,7 +3,7 @@ use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
 use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
-use crate::ast::{ASTStatement, ASTExpression};
+use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTFunctionCallExpression};
 use crate::ast::lexer::TokenKind;
 pub struct Parser {
     tokens: Vec<crate::ast::lexer::Token>,
@@ -38,8 +38,86 @@ impl Parser {
         if token.kind == TokenKind::EOF {
             return None;
         }
+        
+        // Check for variable declaration (let or const)
+        if matches!(token.kind, TokenKind::Let | TokenKind::Const) {
+            return self.parse_variable_declaration();
+        }
+        
+        // Check for assignment (identifier followed by =)
+        if let TokenKind::Identifier(_) = token.kind {
+            if self.peek(1).map(|t| &t.kind) == Some(&TokenKind::Equal) {
+                return self.parse_assignment();
+            }
+        }
+        
+        // Otherwise, parse as expression statement
         let expr = self.parse_expression()?;
+        
+        // Consume optional semicolon
+        if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
+            self.consume();
+        }
+        
         return Some(ASTStatement::expression(expr));
+    }
+
+    pub fn parse_variable_declaration(&mut self) -> Option<ASTStatement> {
+        let keyword = self.consume()?;
+        let is_mutable = keyword.kind == TokenKind::Let;
+        
+        // Expect identifier
+        let name_token = self.consume()?;
+        let name = match name_token.kind {
+            TokenKind::Identifier(ref n) => n.clone(),
+            _ => {
+                eprintln!("Expected identifier after '{}' keyword", 
+                    if is_mutable { "let" } else { "const" });
+                return None;
+            }
+        };
+        
+        // Expect '='
+        if self.consume()?.kind != TokenKind::Equal {
+            eprintln!("Expected '=' after variable name");
+            return None;
+        }
+        
+        // Parse initializer expression
+        let initializer = self.parse_expression()?;
+        
+        // Consume optional semicolon
+        if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
+            self.consume();
+        }
+        
+        Some(ASTStatement::variable_declaration(
+            ASTVariableDeclaration::new(name, initializer, is_mutable)
+        ))
+    }
+
+    pub fn parse_assignment(&mut self) -> Option<ASTStatement> {
+        let name_token = self.consume()?;
+        let name = match &name_token.kind {
+            TokenKind::Identifier(n) => n.clone(),
+            _ => return None,
+        };
+        
+        // Consume '='
+        if self.consume()?.kind != TokenKind::Equal {
+            eprintln!("Expected '=' in assignment");
+            return None;
+        }
+        
+        // Parse value expression
+        let value = self.parse_expression()?;
+        
+        // Consume optional semicolon
+        if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
+            self.consume();
+        }
+        
+        Some(ASTStatement::assignment(ASTAssignment::new(name, value)))
     }
 
     pub fn parse_expression(&mut self) -> Option<ASTExpression> {
@@ -86,6 +164,36 @@ impl Parser {
             TokenKind::String(string) => {
                 self.consume();
                 return Some(ASTExpression::string(string));
+            },
+            TokenKind::Identifier(name) => {
+                self.consume();
+                // Check if this is a function call
+                if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
+                    self.consume(); // consume '('
+                    let mut arguments = Vec::new();
+                    
+                    // Parse arguments (if any)
+                    if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
+                        loop {
+                            let arg = self.parse_expression()?;
+                            arguments.push(arg);
+                            
+                            if self.current().map(|t| &t.kind) == Some(&TokenKind::Comma) {
+                                self.consume(); // consume ','
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if self.consume()?.kind != TokenKind::RightParen {
+                        panic!("Expected closing parenthesis after function arguments");
+                    }
+                    
+                    return Some(ASTExpression::function_call(name, arguments));
+                } else {
+                    return Some(ASTExpression::identifier(name));
+                }
             },
             TokenKind::LeftParen => {
                 self.consume();

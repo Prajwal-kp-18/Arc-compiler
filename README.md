@@ -1,8 +1,24 @@
 # Arc Compiler
 
-A learning-focused compiler project written in Rust that has evolved from a simple arithmetic evaluator into a comprehensive expression language with rich type system and professional error handling.
+A learning-focused compiler project written in Rust that has evolved from a simple arithmetic evaluator into a comprehensive expression language with rich type system, professional error handling, and now supports **variables and assignments**.
 
-## Current Features (Phase 1 Complete)
+## Current Features (Phase 2.2 - Enhanced Usability)
+
+### Variables & State Management
+- **Variable declarations**: `let x = 10` (mutable), `const y = 20` (immutable)
+- **Assignment**: `x = x + 5` with mutability checking
+- **Symbol table**: Tracks variables, types, and mutability
+- **Type safety**: Type checking on assignment with automatic int→float coercion
+- **Error detection**: Undefined variables, redeclaration, immutable assignment attempts
+
+### Built-in Functions
+- **print()**: Output values to console - `print(x)`, `print("Hello")`, `print(42)`
+- Multiple arguments supported
+
+### Code Organization
+- **Comments**: Single-line `//` and multi-line `/* */` comments
+- **File execution**: Run `.arc` files directly
+- **REPL**: Interactive mode for testing expressions
 
 ### Arithmetic Operations
 - **Basic**: `+`, `-`, `*`, `/`
@@ -31,13 +47,50 @@ A learning-focused compiler project written in Rust that has evolved from a simp
 
 ## How it Works
 
-The compiler processes expressions through a three-stage pipeline:
+The compiler processes code through a **four-stage pipeline**:
 
-1.  **Lexical Analysis (Lexer)**: Scans input and produces tokens with position tracking
-2.  **Parsing**: Builds an Abstract Syntax Tree (AST) using precedence climbing
-3.  **Evaluation**: Traverses the AST with type-aware evaluation and error collection
+1.  **Lexical Analysis (Lexer)**: Scans input and produces tokens (keywords, identifiers, operators, literals)
+2.  **Parsing**: Builds an Abstract Syntax Tree (AST) using precedence climbing for expressions
+3.  **Symbol Table**: Manages variables, scopes, and type information
+4.  **Evaluation**: Traverses the AST with type-aware evaluation, variable lookups, and error collection
 
 ## Example Usage
+
+### Variables and Assignment
+```rust
+Input: let x = 10
+Result: Integer(10) : Integer
+
+Input: x + 5
+Result: Integer(15) : Integer
+
+Input: x = x * 2
+Result: Integer(20) : Integer
+
+Input: const PI = 3.14
+Result: Float(3.14) : Float
+
+Input: PI = 3.15  // Error!
+Error: Cannot assign to immutable variable 'PI'
+```
+
+### Print Function and Comments
+```rust
+Input: // This is a comment
+Input: let name = "Arc"
+Result: String("Arc") : String
+
+Input: print(name)
+Output: Arc
+
+Input: print(10 + 5)
+Output: 15
+
+/* Multi-line
+   comment */
+Input: print("Hello", "World")
+Output: Hello World
+```
 
 ### Successful Evaluation
 ```rust
@@ -59,6 +112,11 @@ error: Expected closing parenthesis ')'
 
 ## Features
 
+*   **Variables & State**: `let` and `const` declarations with mutability checking
+*   **Symbol Table**: Variable storage with scope management
+*   **Built-in Functions**: `print()` for output
+*   **Comments**: Single-line `//` and multi-line `/* */`
+*   **File Execution**: Run `.arc` source files
 *   **Arithmetic Operations**: Addition, subtraction, multiplication, division, modulo, exponentiation
 *   **Bitwise Operations**: AND, OR, XOR, left shift, right shift
 *   **Multiple Data Types**: Integers, floats, booleans, strings
@@ -84,18 +142,35 @@ Make sure you have Rust and Cargo installed on your system. You can install them
     cd rust-compiler
     ```
 
-2.  **Build and run the project**:
-    You can build and run the project with a single Cargo command:
+2.  **Build the project**:
+    ```bash
+    cargo build --release
+    ```
+
+3.  **Run in REPL mode** (interactive):
     ```bash
     cargo run
     ```
 
-### Example
+4.  **Execute a file**:
+    ```bash
+    cargo run -- program.arc
+    # or after building:
+    ./target/release/rust-compiler program.arc
+    ```
 
-The `main` function in `src/main.rs` contains a comprehensive test suite with 42 test cases covering:
+### Example8 test cases covering:
 
-- Integer and float arithmetic
-- Comparison operations
+- Variable declarations (`let` and `const`)
+- Variable assignment and reassignment
+- Mutability enforcement
+- Variable usage in expressions
+- Type coercion with variables
+- Integer, float, boolean, and string variables
+- Comparison operations with variables
+- Logical operations with variables
+- Bitwise operations with variables
+- Error cases (undefined variables, redeclaration, immutable assignment)erations
 - Logical operations with short-circuit evaluation
 - Type coercion
 - Complex boolean expressions

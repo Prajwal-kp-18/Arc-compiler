@@ -35,3 +35,4 @@ Cargo.lock
 # Extra
 NOTES.md
 FUTURE_SCOPE.md
+examples/*

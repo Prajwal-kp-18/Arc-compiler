@@ -2,6 +2,7 @@ pub mod lexer;
 pub mod parser;
 pub mod evaluator;
 pub mod types;
+pub mod symbol_table;
 
 use crate::ast::lexer::Token;
 use crate::ast::types::Value;
@@ -37,6 +38,8 @@ pub trait ASTVisitor {
     fn do_visit_statement(&mut self, statement: &ASTStatement) {
          match &statement.kind {
             ASTStatementKind::Expression(expr) => self.visit_expression(expr),
+            ASTStatementKind::VariableDeclaration(decl) => self.visit_variable_declaration(decl),
+            ASTStatementKind::Assignment(assign) => self.visit_assignment(assign),
         }
     }
     fn visit_statement(&mut self, statement: &ASTStatement){
@@ -54,6 +57,12 @@ pub trait ASTVisitor {
             }
             ASTExpressionKind::Unary(unary_expr) => {
                 self.visit_unary_expression(unary_expr);
+            }
+            ASTExpressionKind::Identifier(ident) => {
+                self.visit_identifier(ident);
+            }
+            ASTExpressionKind::FunctionCall(func_call) => {
+                self.visit_function_call(func_call);
             }
         }
     }
@@ -73,6 +82,24 @@ pub trait ASTVisitor {
 
     fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
         self.do_visit_expression(&unary_expr.operand);
+    }
+
+    fn visit_identifier(&mut self, ident: &ASTIdentifierExpression) {
+        let _ = ident; // Default implementation
+    }
+
+    fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
+        for arg in &func_call.arguments {
+            self.visit_expression(arg);
+        }
+    }
+
+    fn visit_variable_declaration(&mut self, decl: &ASTVariableDeclaration) {
+        self.visit_expression(&decl.initializer);
+    }
+
+    fn visit_assignment(&mut self, assign: &ASTAssignment) {
+        self.visit_expression(&assign.value);
     }
 }
 
@@ -125,7 +152,28 @@ impl ASTVisitor for ASTPrintor {
         self.indent -= LEVEL_INDENT;
     }
 
+    fn visit_identifier(&mut self, ident: &ASTIdentifierExpression) {
+        self.print_with_indent(&format!("Identifier: {}", ident.name));
+    }
 
+    fn visit_variable_declaration(&mut self, decl: &ASTVariableDeclaration) {
+        self.print_with_indent(&format!(
+            "Variable Declaration: {} {} {}",
+            if decl.is_mutable { "let" } else { "const" },
+            decl.name,
+            "="
+        ));
+        self.indent += LEVEL_INDENT;
+        self.visit_expression(&decl.initializer);
+        self.indent -= LEVEL_INDENT;
+    }
+
+    fn visit_assignment(&mut self, assign: &ASTAssignment) {
+        self.print_with_indent(&format!("Assignment: {} =", assign.name));
+        self.indent += LEVEL_INDENT;
+        self.visit_expression(&assign.value);
+        self.indent -= LEVEL_INDENT;
+    }
 }
 
 impl ASTPrintor {
@@ -136,10 +184,12 @@ impl ASTPrintor {
 
 pub enum  ASTStatementKind{
     Expression(ASTExpression),
+    VariableDeclaration(ASTVariableDeclaration),
+    Assignment(ASTAssignment),
 }
 
 pub struct ASTStatement {
-    kind: ASTStatementKind,
+    pub kind: ASTStatementKind,
 } 
 
 impl ASTStatement {
@@ -150,6 +200,14 @@ impl ASTStatement {
     pub fn expression(expr: ASTExpression) -> Self {
         ASTStatement::new(ASTStatementKind::Expression(expr))
     }
+
+    pub fn variable_declaration(decl: ASTVariableDeclaration) -> Self {
+        ASTStatement::new(ASTStatementKind::VariableDeclaration(decl))
+    }
+
+    pub fn assignment(assign: ASTAssignment) -> Self {
+        ASTStatement::new(ASTStatementKind::Assignment(assign))
+    }
 }
 
 pub enum ASTExpressionKind {
@@ -157,6 +215,8 @@ pub enum ASTExpressionKind {
     Binary(ASTBinaryExpression),   
     Paranthesized(ASTParanthesizedExpression),
     Unary(ASTUnaryExpression),
+    Identifier(ASTIdentifierExpression),
+    FunctionCall(ASTFunctionCallExpression),
 }
 
 pub struct ASTBinaryExpression {
@@ -286,5 +346,64 @@ impl ASTExpression {
 
     pub fn unary(operator: ASTUnaryOperator, operand: ASTExpression) -> Self {
         ASTExpression::new(ASTExpressionKind::Unary(ASTUnaryExpression { operator, operand: Box::new(operand) }))
+    }
+
+    pub fn identifier(name: String) -> Self {
+        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression { name }))
+    }
+
+    pub fn function_call(name: String, arguments: Vec<ASTExpression>) -> Self {
+        ASTExpression::new(ASTExpressionKind::FunctionCall(ASTFunctionCallExpression { name, arguments }))
+    }
+}
+
+// Variable-related AST nodes
+pub struct ASTVariableDeclaration {
+    pub name: String,
+    pub initializer: Box<ASTExpression>,
+    pub is_mutable: bool, // true for 'let', false for 'const'
+}
+
+impl ASTVariableDeclaration {
+    pub fn new(name: String, initializer: ASTExpression, is_mutable: bool) -> Self {
+        ASTVariableDeclaration {
+            name,
+            initializer: Box::new(initializer),
+            is_mutable,
+        }
+    }
+}
+
+pub struct ASTAssignment {
+    pub name: String,
+    pub value: Box<ASTExpression>,
+}
+
+impl ASTAssignment {
+    pub fn new(name: String, value: ASTExpression) -> Self {
+        ASTAssignment {
+            name,
+            value: Box::new(value),
+        }
+    }
+}
+
+pub struct ASTIdentifierExpression {
+    pub name: String,
+}
+
+impl ASTIdentifierExpression {
+    pub fn new(name: String) -> Self {
+        ASTIdentifierExpression { name }
+    }
+}
+pub struct ASTFunctionCallExpression {
+    pub name: String,
+    pub arguments: Vec<ASTExpression>,
+}
+
+impl ASTFunctionCallExpression {
+    pub fn new(name: String, arguments: Vec<ASTExpression>) -> Self {
+        ASTFunctionCallExpression { name, arguments }
     }
 }
