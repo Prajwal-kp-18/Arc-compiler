@@ -1,7 +1,9 @@
+//! Symbol table - manages variables and scopes
+
 use crate::ast::types::{DataType, Value};
 use std::collections::HashMap;
 
-/// Represents a symbol (variable) in the symbol table
+/// Variable storage with type and mutability info
 #[derive(Debug, Clone)]
 pub struct Symbol {
     pub name: String,
@@ -23,7 +25,7 @@ impl Symbol {
     }
 }
 
-/// Represents a scope level in the symbol table
+/// Single scope level containing variables
 #[derive(Debug, Clone)]
 pub struct Scope {
     symbols: HashMap<String, Symbol>,
@@ -57,7 +59,7 @@ impl Scope {
     }
 }
 
-/// Symbol table with support for nested scopes
+/// Manages nested scopes for variable lookup and assignment
 #[derive(Debug)]
 pub struct SymbolTable {
     scopes: Vec<Scope>,
@@ -103,13 +105,13 @@ impl SymbolTable {
 
     /// Look up a variable by name (searches from current scope up to global)
     pub fn lookup(&self, name: &str) -> Option<&Symbol> {
-        // Search from innermost to outermost scope
+        // Search from innermost to outermost scope (lexical scoping)
         for scope in self.scopes.iter().rev() {
             if let Some(symbol) = scope.get(name) {
-                return Some(symbol);
+                return Some(symbol); // Return first match found
             }
         }
-        None
+        None // Variable not found in any scope
     }
 
     /// Assign a value to an existing variable
@@ -117,21 +119,22 @@ impl SymbolTable {
         // Search from innermost to outermost scope
         for scope in self.scopes.iter_mut().rev() {
             if let Some(symbol) = scope.get_mut(name) {
+                // Enforce immutability for const variables
                 if !symbol.is_mutable {
                     return Err(format!("Cannot assign to immutable variable '{}'", name));
                 }
                 
-                // Check type compatibility
+                // Type checking: ensure assigned value matches variable's declared type
                 let new_type = value.get_type();
                 if symbol.data_type != new_type {
-                    // Allow int to float coercion
+                    // Special case: allow int to float widening conversion
                     if !(symbol.data_type == DataType::Float && new_type == DataType::Integer) {
                         return Err(format!(
                             "Type mismatch: variable '{}' has type {:?}, cannot assign value of type {:?}",
                             name, symbol.data_type, new_type
                         ));
                     }
-                    // Coerce integer to float
+                    // Perform the coercion
                     if let Value::Integer(i) = value {
                         symbol.value = Value::Float(i as f64);
                         return Ok(());

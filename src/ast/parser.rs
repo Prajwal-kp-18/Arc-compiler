@@ -1,3 +1,5 @@
+//! Parser - converts tokens into Abstract Syntax Tree using recursive descent
+
 use crate::ast::lexer::Token;
 use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
@@ -5,6 +7,8 @@ use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
 use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTFunctionCallExpression};
 use crate::ast::lexer::TokenKind;
+
+/// Converts token stream into AST using recursive descent with precedence climbing
 pub struct Parser {
     tokens: Vec<crate::ast::lexer::Token>,
     current: usize,
@@ -33,6 +37,7 @@ impl Parser {
         return self.parse_statement();
     }
 
+    /// Parses a statement (variable declaration, assignment, or expression)
     pub fn parse_statement(&mut self) -> Option<ASTStatement> {
         let token: &Token = self.current()?;
         if token.kind == TokenKind::EOF {
@@ -44,7 +49,7 @@ impl Parser {
             return self.parse_variable_declaration();
         }
         
-        // Check for assignment (identifier followed by =)
+        // Check for assignment - needs lookahead to distinguish from identifier expression
         if let TokenKind::Identifier(_) = token.kind {
             if self.peek(1).map(|t| &t.kind) == Some(&TokenKind::Equal) {
                 return self.parse_assignment();
@@ -62,6 +67,7 @@ impl Parser {
         return Some(ASTStatement::expression(expr));
     }
 
+    /// Parses 'let' or 'const' variable declarations
     pub fn parse_variable_declaration(&mut self) -> Option<ASTStatement> {
         let keyword = self.consume()?;
         let is_mutable = keyword.kind == TokenKind::Let;
@@ -96,6 +102,7 @@ impl Parser {
         ))
     }
 
+    /// Parses assignment statements (identifier = expression)
     pub fn parse_assignment(&mut self) -> Option<ASTStatement> {
         let name_token = self.consume()?;
         let name = match &name_token.kind {
@@ -124,19 +131,23 @@ impl Parser {
         return self.parse_binary_expression(0);
     }
 
+    /// Parses binary expressions using operator precedence climbing
     pub fn parse_binary_expression(&mut self, precedence: u8) -> Option<ASTExpression> {
         let mut left: ASTExpression = self.parse_primary_expression()?;
 
         loop {
+            // Check if next token is an operator
             let operator = self.parse_binary_operator();
             let operator_precedence = match operator.as_ref().map(|op| op.precedence()) {
                 Some(op_prec) => op_prec,
-                None => break,
+                None => break, // Not an operator, we're done
             };
+            // Only consume operators with higher precedence than current level
             if operator_precedence < precedence {
                 break;
             }
-            self.consume(); // only consume if we have a valid operator
+            self.consume(); // Consume the operator token
+            // Recursively parse right side with current operator's precedence
             let right: ASTExpression = self.parse_binary_expression(operator_precedence)?;
             left = ASTExpression::binary(operator.unwrap(), left, right);
         }
@@ -144,6 +155,7 @@ impl Parser {
         return Some(left);
     }
 
+    /// Parses primary expressions (literals, identifiers, function calls, parenthesized expressions)
     pub fn parse_primary_expression(&mut self) -> Option<ASTExpression> {
         let token: &Token = self.current()?;
         let token_kind = token.kind.clone();
@@ -167,17 +179,18 @@ impl Parser {
             },
             TokenKind::Identifier(name) => {
                 self.consume();
-                // Check if this is a function call
+                // Check if this is a function call (identifier followed by '(')
                 if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
                     self.consume(); // consume '('
                     let mut arguments = Vec::new();
                     
-                    // Parse arguments (if any)
+                    // Parse comma-separated argument list
                     if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
                         loop {
                             let arg = self.parse_expression()?;
                             arguments.push(arg);
                             
+                            // Continue if comma found, otherwise done with arguments
                             if self.current().map(|t| &t.kind) == Some(&TokenKind::Comma) {
                                 self.consume(); // consume ','
                             } else {
@@ -219,6 +232,7 @@ impl Parser {
         }
     }
 
+    /// Identifies binary operators and returns with precedence info
     pub fn parse_binary_operator(&mut self) -> Option<ASTBinaryOperator> {
         let token: &Token = self.current()?;
         let kind = match token.kind {

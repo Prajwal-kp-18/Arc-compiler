@@ -1,3 +1,5 @@
+//! AST module - Abstract Syntax Tree structures and visitor pattern
+
 pub mod lexer;
 pub mod parser;
 pub mod evaluator;
@@ -7,6 +9,7 @@ pub mod symbol_table;
 use crate::ast::lexer::Token;
 use crate::ast::types::Value;
 
+/// Root AST structure containing statements
 pub struct Ast {
     pub statements: Vec<ASTStatement>,
 }
@@ -103,6 +106,7 @@ pub trait ASTVisitor {
     }
 }
 
+/// Visitor implementation for pretty-printing AST structure
 pub struct ASTPrintor{
     indent: usize,
 }
@@ -182,6 +186,7 @@ impl ASTPrintor {
     }
 }
 
+/// Statement types in Arc language
 pub enum  ASTStatementKind{
     Expression(ASTExpression),
     VariableDeclaration(ASTVariableDeclaration),
@@ -210,6 +215,7 @@ impl ASTStatement {
     }
 }
 
+/// Expression types in Arc language
 pub enum ASTExpressionKind {
     Number(ASTNumberExpression),
     Binary(ASTBinaryExpression),   

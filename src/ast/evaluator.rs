@@ -1,8 +1,10 @@
+//! Evaluator - executes AST and produces values
+
 use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression};
 use crate::ast::types::Value;
 use crate::ast::symbol_table::SymbolTable;
 
-
+/// Evaluates AST nodes and maintains execution state
 pub struct ASTEvaluator {
     pub last_value: Option<Value>,
     pub errors: Vec<String>,
@@ -28,17 +30,19 @@ impl ASTVisitor for ASTEvaluator {
         self.last_value = Some(number.value.clone());
     }
 
+    /// Evaluates binary operations with short-circuit logic for && and ||
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
-        // Handle short-circuit evaluation for logical operators
+        // Handle short-circuit evaluation for logical operators (optimization + correctness)
         match expr.operator.kind {
             ASTBinaryOperatorKind::LogicalAnd => {
-                // Short-circuit: if left is false, don't evaluate right
+                // Evaluate left operand first
                 self.visit_expression(&expr.left);
                 let left = match &self.last_value {
                     Some(v) => v.clone(),
                     None => return,
                 };
                 
+                // If left is false, result is false without evaluating right
                 if !left.to_boolean() {
                     self.last_value = Some(Value::Boolean(false));
                     return;
@@ -99,6 +103,7 @@ impl ASTVisitor for ASTEvaluator {
 
         self.last_value = match expr.operator.kind {
             ASTBinaryOperatorKind::Plus => {
+                // Try to coerce operands to compatible types (e.g., int + float -> float + float)
                 match Value::coerce_to_common_type(&left, &right) {
                     Ok((l, r)) => match (l, r) {
                         (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a + b)),
@@ -151,6 +156,7 @@ impl ASTVisitor for ASTEvaluator {
                 match Value::coerce_to_common_type(&left, &right) {
                     Ok((l, r)) => match (l, r) {
                         (Value::Integer(a), Value::Integer(b)) => {
+                            // Check for division by zero at runtime
                             if b == 0 {
                                 self.add_error("Division by zero".to_string());
                                 None
@@ -159,6 +165,7 @@ impl ASTVisitor for ASTEvaluator {
                             }
                         },
                         (Value::Float(a), Value::Float(b)) => {
+                            // Floating point division by zero check
                             if b == 0.0 {
                                 self.add_error("Division by zero".to_string());
                                 None
@@ -204,6 +211,7 @@ impl ASTVisitor for ASTEvaluator {
                 match Value::coerce_to_common_type(&left, &right) {
                     Ok((l, r)) => match (l, r) {
                         (Value::Integer(a), Value::Integer(b)) => {
+                            // Negative exponent requires float result (e.g., 2^-1 = 0.5)
                             if b < 0 {
                                 Some(Value::Float((a as f64).powf(b as f64)))
                             } else {

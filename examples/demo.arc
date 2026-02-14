@@ -15,10 +15,10 @@ print(PI)
 
 // Arithmetic operations
 let sum = x + y
-print(sum)
+print("sum: " + sum)
 
 let product = x * y
-print(product)
+print("product: " + product)
 
 // Type coercion
 let mixed = x + PI
@@ -26,7 +26,7 @@ print(mixed)
 
 // Boolean operations
 let isGreater = x > 5
-print(isGreater)
+print("isGreater: " + isGreater)
 
 let result = x < 20 && y > 10
 print(result)

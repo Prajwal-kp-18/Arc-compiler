@@ -1,6 +1,8 @@
+//! Type system - defines data types and values with operations
+
 use std::fmt;
 
-/// Represents the different data types supported by the compiler
+/// Data types supported by Arc language
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Integer,
@@ -10,7 +12,7 @@ pub enum DataType {
     Unknown,
 }
 
-/// Represents a value with its type
+/// Runtime value with type information
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Integer(i64),
@@ -29,7 +31,7 @@ impl Value {
         }
     }
 
-    /// Try to coerce values to a common type for binary operations
+    /// Converts values to common type for operations (e.g., int to float)
     pub fn coerce_to_common_type(left: &Value, right: &Value) -> Result<(Value, Value), String> {
         match (left, right) {
             // Same types - no coercion needed

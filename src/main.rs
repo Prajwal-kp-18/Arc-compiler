@@ -1,3 +1,5 @@
+//! Arc Compiler - Supports REPL mode and file execution
+
 mod ast;
 use ast::lexer::Token;
 use ast::Ast;
@@ -8,6 +10,7 @@ use std::io::{self, Write, BufRead};
 use std::env;
 use std::fs;
 
+/// Entry point - runs REPL or executes file from command line
 fn main() {
     let args: Vec<String> = env::args().collect();
     
@@ -21,6 +24,7 @@ fn main() {
     }
 }
 
+/// Reads and executes Arc source file line by line
 fn execute_file(filename: &str) {
     let contents = match fs::read_to_string(filename) {
         Ok(c) => c,
@@ -52,6 +56,7 @@ fn execute_file(filename: &str) {
     }
 }
 
+/// Tokenizes, parses, and evaluates a single line of code
 fn execute_line(input: &str, evaluator: &mut ASTEvaluator, line_num: usize) {
     let mut lexer = ast::lexer::Lexer::new(input);
     let mut tokens: Vec<Token> = Vec::new();
@@ -81,6 +86,7 @@ fn execute_line(input: &str, evaluator: &mut ASTEvaluator, line_num: usize) {
     }
 }
 
+/// Interactive Read-Eval-Print Loop for testing expressions
 fn run_repl() {
     println!("=== Arc Compiler REPL ===");
     println!("Type expressions to evaluate them. Type 'exit' or 'quit' to exit.\n");

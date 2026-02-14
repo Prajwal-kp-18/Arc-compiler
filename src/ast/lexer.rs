@@ -1,4 +1,6 @@
+//! Lexical analyzer - converts source code into tokens
 
+/// Represents different token types in Arc language
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Number(i64),
@@ -43,6 +45,7 @@ pub enum TokenKind {
     Identifier(String),
 }  
 
+/// Tracks location and content of a token in source code
 #[derive(Debug, PartialEq, Clone)]
 pub struct TextSpan {
     pub(crate) start: usize,
@@ -60,6 +63,7 @@ impl TextSpan {
     }
 }
 
+/// A token with its type and source location
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
      pub(crate) kind: TokenKind,
@@ -72,6 +76,7 @@ impl Token {
     }
 }
 
+/// Tokenizes Arc source code into a stream of tokens
 pub struct Lexer<'o> {
     pub input: &'o str,
     pub current_pos: usize,
@@ -85,6 +90,7 @@ impl <'o> Lexer<'o> {
         }
     }
 
+    /// Returns the next token from input stream
     pub fn next_token(&mut self) -> Option<Token> {
         if self.current_pos == self.input.len() {
             self.current_pos += 1;
@@ -122,13 +128,14 @@ impl <'o> Lexer<'o> {
         c.is_whitespace() 
     }
 
+    /// Handles operators and punctuation, including multi-character operators
     pub fn consume_punctuation(&mut self) -> TokenKind {
         let c: char = self.consume().unwrap();
         match c {
             '+' => TokenKind::Plus,
             '-' => TokenKind::Minus,
             '*' => {
-                // Check for ** (exponentiation)
+                // Lookahead for ** (exponentiation) vs single * (multiply)
                 if self.current_char() == Some('*') {
                     self.consume();
                     TokenKind::DoubleStar
@@ -240,7 +247,6 @@ impl <'o> Lexer<'o> {
 
 
     pub fn consume(&mut self) -> Option<char> {
-        // doubt > or >=
         if self.current_pos > self.input.len() {
             return None;
         }
@@ -262,6 +268,7 @@ impl <'o> Lexer<'o> {
         number
     }
 
+    /// Parses numeric literals (integers or floats)
     pub fn consume_number_or_float(&mut self) -> TokenKind {
         let mut number_str = String::new();
         let mut is_float = false;
@@ -272,14 +279,14 @@ impl <'o> Lexer<'o> {
                 number_str.push(c);
                 self.consume();
             } else if c == '.' && !is_float {
-                // Check if next char is a digit (to distinguish from method calls)
+                // Lookahead to distinguish float (3.14) from method call (obj.method)
                 if let Some(next_c) = self.peek_char(1) {
                     if next_c.is_digit(10) {
                         is_float = true;
                         number_str.push(c);
                         self.consume();
                     } else {
-                        break;
+                        break; // Not a float, stop here
                     }
                 } else {
                     break;
@@ -296,6 +303,7 @@ impl <'o> Lexer<'o> {
         }
     }
 
+    /// Parses string literals with escape sequence support
     pub fn consume_string(&mut self) -> TokenKind {
         self.consume(); // consume opening quote
         let mut string = String::new();
@@ -306,7 +314,7 @@ impl <'o> Lexer<'o> {
                 break;
             } else if c == '\\' {
                 self.consume();
-                // Handle escape sequences
+                // Process escape sequences (\n, \t, etc.)
                 if let Some(escaped) = self.current_char() {
                     self.consume();
                     match escaped {
@@ -316,6 +324,7 @@ impl <'o> Lexer<'o> {
                         '\\' => string.push('\\'),
                         '"' => string.push('"'),
                         _ => {
+                            // Unknown escape: keep backslash and character
                             string.push('\\');
                             string.push(escaped);
                         }
@@ -330,6 +339,7 @@ impl <'o> Lexer<'o> {
         TokenKind::String(string)
     }
 
+    /// Parses identifiers and keywords (let, const, true, false)
     pub fn consume_identifier(&mut self) -> TokenKind {
         let mut identifier = String::new();
         
@@ -342,13 +352,13 @@ impl <'o> Lexer<'o> {
             }
         }
         
-        // Check for keywords (true, false, let, const)
+        // Distinguish reserved keywords from user-defined identifiers
         match identifier.as_str() {
             "true" => TokenKind::Boolean(true),
             "false" => TokenKind::Boolean(false),
             "let" => TokenKind::Let,
             "const" => TokenKind::Const,
-            _ => TokenKind::Identifier(identifier),
+            _ => TokenKind::Identifier(identifier), // User-defined name
         }
     }
 
