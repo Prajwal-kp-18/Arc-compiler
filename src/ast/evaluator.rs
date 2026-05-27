@@ -540,7 +540,7 @@ impl ASTVisitor for ASTEvaluator {
 
     /// Dispatches to built-in function implementations.
     ///
-    /// Currently only `print` is supported. Unknown function names are reported
+    /// Currently `print`, `max`, and `min` are supported. Unknown function names are reported
     /// as errors via [`ASTEvaluator::errors`].
     fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
         match func_call.name.as_str() {

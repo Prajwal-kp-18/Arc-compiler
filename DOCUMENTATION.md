@@ -293,6 +293,48 @@ print("Sum:", 5 + 3)        // Output: Sum: 8
 
 ---
 
+### min()
+Returns the smallest of the given arguments. Arguments must be comparable (integers and floats are supported together; strings compare lexicographically).
+
+**Syntax**:
+```arc
+min(expr1, expr2, ...)
+```
+
+**Examples**:
+```arc
+min(5, 2, 8)        // 2
+min(3.5, 2, 4.1)    // 2.0
+min("b", "a")    // "a"
+```
+
+**Behavior**:
+- Evaluates all arguments; returns the minimum value according to the language's ordering rules
+- Requires at least one argument; otherwise a runtime error is reported
+
+---
+
+### max()
+Returns the largest of the given arguments. Arguments must be comparable (integers and floats are supported together; strings compare lexicographically).
+
+**Syntax**:
+```arc
+max(expr1, expr2, ...)
+```
+
+**Examples**:
+```arc
+max(5, 2, 8)        // 8
+max(3.5, 2, 4.1)    // 4.1
+max("b", "a")    // "b"
+```
+
+**Behavior**:
+- Evaluates all arguments; returns the maximum value according to the language's ordering rules
+- Requires at least one argument; otherwise a runtime error is reported
+
+---
+
 ## Type System
 
 ### Value Types
