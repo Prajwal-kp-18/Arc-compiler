@@ -2,6 +2,9 @@
 
 A compiler for a custom expression language built in Rust, supporting variables, a rich type system, arithmetic and logical operations, and error diagnostics.
 
+[![Docs](https://img.shields.io/badge/docs-online-blue)](https://prajwal-kp-18.github.io/Arc-compiler/Arc_compiler/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 ## Features
 
 ### Language
