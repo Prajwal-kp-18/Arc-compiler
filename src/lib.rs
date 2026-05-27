@@ -15,10 +15,10 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use Arc_compiler::ast::{Ast, ASTVisitor};
-//! use Arc_compiler::ast::lexer::Lexer;
-//! use Arc_compiler::ast::parser::Parser;
-//! use Arc_compiler::ast::evaluator::ASTEvaluator;
+//! use arc_compiler::ast::{Ast, ASTVisitor};
+//! use arc_compiler::ast::lexer::Lexer;
+//! use arc_compiler::ast::parser::Parser;
+//! use arc_compiler::ast::evaluator::ASTEvaluator;
 //!
 //! let source = "let x = 10";
 //!

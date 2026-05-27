@@ -1,5 +1,5 @@
 [package]
-name = "Arc-compiler"
+name = "arc-compiler"
 version = "0.1.0"
 edition = "2021"
 authors = ["Prajwal KP"]
@@ -11,13 +11,13 @@ keywords = ["compiler", "parser", "lexer", "ast", "evaluator"]
 categories = ["parser-implementations", "compilers"]
 
 [lib]
-name = "Arc_compiler"
+name = "arc_compiler"
 path = "src/lib.rs"
 
 [dependencies]
 
 [[bin]]
-name = "rust-compiler"
+name = "arc"
 path = "src/main.rs"
 
 [profile.release]
