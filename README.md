@@ -1,256 +1,135 @@
 # Arc Compiler
 
-A learning-focused compiler project written in Rust that has evolved from a simple arithmetic evaluator into a comprehensive expression language with rich type system, professional error handling, and now supports **variables and assignments**.
-
-## Current Features (Phase 2.2 - Enhanced Usability)
-
-### Variables & State Management
-- **Variable declarations**: `let x = 10` (mutable), `const y = 20` (immutable)
-- **Assignment**: `x = x + 5` with mutability checking
-- **Symbol table**: Tracks variables, types, and mutability
-- **Type safety**: Type checking on assignment with automatic int→float coercion
-- **Error detection**: Undefined variables, redeclaration, immutable assignment attempts
-
-### Built-in Functions
-- **print()**: Output values to console - `print(x)`, `print("Hello")`, `print(42)`
-- Multiple arguments supported
-
-### Code Organization
-- **Comments**: Single-line `//` and multi-line `/* */` comments
-- **File execution**: Run `.arc` files directly
-- **REPL**: Interactive mode for testing expressions
-
-### Arithmetic Operations
-- **Basic**: `+`, `-`, `*`, `/`
-- **Extended**: `%` (modulo), `**` (exponentiation)
-- **Bitwise**: `&`, `|`, `^`, `<<`, `>>`
-- **Unary**: `-x`, `+x`, `!x`
-
-### Rich Type System
-- **Integer**: Full precision integer arithmetic
-- **Float**: IEEE 754 floating-point numbers
-- **Boolean**: `true` and `false` with truthy/falsy conversion
-- **String**: String literals with comparison support
-- **Automatic type coercion**: Seamless int ↔ float conversions
-
-### Comparison & Logical Operators
-- **Comparison**: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- **Logical**: `&&` (AND), `||` (OR), `!` (NOT)
-- **Short-circuit evaluation**: Efficient and safe evaluation
-
-### Professional Error Handling
-- Line and column tracking
-- Colored terminal output (red errors, yellow warnings)
-- Source code snippets at error location
-- Helpful suggestions for fixing errors
-- Error recovery (continues after recoverable errors)
-
-## How it Works
-
-The compiler processes code through a **four-stage pipeline**:
-
-1.  **Lexical Analysis (Lexer)**: Scans input and produces tokens (keywords, identifiers, operators, literals)
-2.  **Parsing**: Builds an Abstract Syntax Tree (AST) using precedence climbing for expressions
-3.  **Symbol Table**: Manages variables, scopes, and type information
-4.  **Evaluation**: Traverses the AST with type-aware evaluation, variable lookups, and error collection
-
-## Example Usage
-
-### Variables and Assignment
-```rust
-Input: let x = 10
-Result: Integer(10) : Integer
-
-Input: x + 5
-Result: Integer(15) : Integer
-
-Input: x = x * 2
-Result: Integer(20) : Integer
-
-Input: const PI = 3.14
-Result: Float(3.14) : Float
-
-Input: PI = 3.15  // Error!
-Error: Cannot assign to immutable variable 'PI'
-```
-
-### Print Function and Comments
-```rust
-Input: // This is a comment
-Input: let name = "Arc"
-Result: String("Arc") : String
-
-Input: print(name)
-Output: Arc
-
-Input: print(10 + 5)
-Output: 15
-
-/* Multi-line
-   comment */
-Input: print("Hello", "World")
-Output: Hello World
-```
-
-### Successful Evaluation
-```rust
-Input: 5 > 3 && 10.0 == 10
-Result: true
-Type: Boolean
-```
-
-### Error Detection
-```
-Input: (5 + 3
-
-error: Expected closing parenthesis ')'
-  --> input:1:7
-1 | (5 + 3
-  |       ^
-  help: Add ')' to close the expression
-```
+A compiler for a custom expression language built in Rust, supporting variables, a rich type system, arithmetic and logical operations, and error diagnostics.
 
 ## Features
 
-*   **Variables & State**: `let` and `const` declarations with mutability checking
-*   **Symbol Table**: Variable storage with scope management
-*   **Built-in Functions**: `print()` for output
-*   **Comments**: Single-line `//` and multi-line `/* */`
-*   **File Execution**: Run `.arc` source files
-*   **Arithmetic Operations**: Addition, subtraction, multiplication, division, modulo, exponentiation
-*   **Bitwise Operations**: AND, OR, XOR, left shift, right shift
-*   **Multiple Data Types**: Integers, floats, booleans, strings
-*   **Type Coercion**: Automatic conversion between compatible types
-*   **Comparison Operators**: All standard comparison operations
-*   **Logical Operators**: AND, OR, NOT with short-circuit evaluation
-*   **Operator Precedence**: 11 levels of precedence for correct evaluation order
-*   **Parentheses**: Grouping of expressions
-*   **Error Handling**: Professional diagnostics with source context
-## Getting Started
+### Language
 
-This section will guide you through running the expression evaluator on your local machine.
+- **Variables**: `let x = 10` (mutable), `const PI = 3.14` (immutable)
+- **Assignment**: `x = x + 5` with mutability and type checking
+- **Built-in functions**: `print(x)`, `print("Hello", "World")`
+- **Comments**: Single-line `//` and multi-line `/* */`
 
-### Prerequisites
+### Types
 
-Make sure you have Rust and Cargo installed on your system. You can install them by following the official instructions at [rust-lang.org](https://www.rust-lang.org/tools/install).
+- `Integer`, `Float`, `Boolean`, `String`
+- Automatic `int → float` coercion where applicable
 
-### Building and Running
+### Operators
 
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/Prajwal-kp-18/Arc-compiler
-    cd Arc-compiler
-    ```
+| Category   | Operators                          |
+|------------|------------------------------------|
+| Arithmetic | `+`, `-`, `*`, `/`, `%`, `**`      |
+| Bitwise    | `&`, `|`, `^`, `<<`, `>>`          |
+| Comparison | `==`, `!=`, `<`, `>`, `<=`, `>=`   |
+| Logical    | `&&`, `||`, `!`                    |
+| Unary      | `-x`, `+x`, `!x`                   |
 
-2.  **Build the project**:
-    ```bash
-    cargo build --release
-    ```
+**Operator Precedence** (11 levels, lowest to highest):
+1. Logical OR (`||`)
+2. Logical AND (`&&`)
+3. Bitwise OR (`|`)
+4. Bitwise XOR (`^`)
+5. Bitwise AND (`&`)
+6. Equality (`==`, `!=`)
+7. Comparison (`<`, `>`, `<=`, `>=`)
+8. Bit Shifts (`<<`, `>>`)
+9. Addition/Subtraction (`+`, `-`)
+10. Multiplication/Division/Modulo (`*`, `/`, `%`)
+11. Exponentiation (`**`) Right-associative
 
-3.  **Run in REPL mode** (interactive):
-    ```bash
-    cargo run
-    ```
+Parentheses `()` can be used for explicit grouping and operator override.
 
-4.  **Execute a file**:
-    ```bash
-    cargo run -- program.arc
-    # or after building:
-    ./target/release/rust-compiler program.arc
-    ```
+### Error Handling
 
-### Example8 test cases covering:
-
-- Variable declarations (`let` and `const`)
-- Variable assignment and reassignment
-- Mutability enforcement
-- Variable usage in expressions
-- Type coercion with variables
-- Integer, float, boolean, and string variables
-- Comparison operations with variables
-- Logical operations with variables
-- Bitwise operations with variables
-- Error cases (undefined variables, redeclaration, immutable assignment)erations
-- Logical operations with short-circuit evaluation
-- Type coercion
-- Complex boolean expressions
-- Error handling demonstration
-
-Run `cargo run` to see all tests execute and the error handling system in action!
+- Type checking at runtime with descriptive error messages
+- Variable existence and mutability validation
+- Division by zero detection
+- Operation compatibility checking (e.g., cannot add boolean and string)
+- Error accumulation execution continues after errors, all errors reported
+- Integration with REPL and file execution modes
 
 ## Project Structure
 
 ```
 src/
-├── main.rs              # Test suite and demonstrations
-├── lib.rs               # Library interface
+├── main.rs          # Entry point and REPL/file execution
+├── lib.rs           # Library interface
 └── ast/
-    ├── mod.rs          # AST node definitions (21 operators, 11 precedence levels)
-    ├── lexer.rs        # Tokenization with position tracking (33 token types)
-    ├── parser.rs       # Precedence-climbing parser with error recovery
-    ├── evaluator.rs    # Type-aware expression evaluator
-    ├── types.rs        # Value system and type coercion
-    └── error.rs        # Error reporting infrastructure (11 error types)
+    ├── mod.rs       # AST node definitions
+    ├── lexer.rs     # Tokenizer with position tracking
+    ├── parser.rs    # Precedence-climbing parser
+    ├── evaluator.rs # Type-aware evaluator with error handling
+    ├── types.rs     # Value types and coercion rules
+    └── symbol_table.rs # Variable storage and scope management
 ```
 
-## Test Results
+## How It Works
 
-All 42 test cases pass successfully:
-- Integer arithmetic
-- Float arithmetic
-- Boolean operations
-- String comparisons
-- Type coercion
-- Short-circuit evaluation
-- Complex expressions
-- Error handling
+Code is processed through a four-stage pipeline:
+
+1. **Lexer:** Scans source text and produces tokens
+2. **Parser:** Builds an Abstract Syntax Tree (AST)
+3. **Symbol Table:** Resolves variables and enforces scope and mutability
+4. **Evaluator:** Traverses the AST and produces values
+
+## Getting Started
+
+### Prerequisites
+
+Install Rust and Cargo via [rust-lang.org](https://www.rust-lang.org/tools/install).
+
+### Build and Run
+
+```bash
+# Clone the repository
+git clone https://github.com/Prajwal-kp-18/Arc-compiler
+cd Arc-compiler
+
+# Build
+cargo build --release
+
+# Run in interactive (REPL) mode
+cargo run
+
+# Execute a source file
+cargo run -- program.arc
+```
+
+## Usage Examples
+
+```arc
+let x = 10
+x = x * 2          // x is now 20
+
+const PI = 3.14
+PI = 3.15           // Error: Cannot assign to immutable variable 'PI'
+
+print("Hello", "World")
+print(x + 5)
+
+let flag = x > 10 && true
+```
+
+**Error Example:**
+```
+Error:
+  Cannot assign to immutable variable 'PI'
+```
 
 ## Contributing
 
-Contributions are welcome! If you have ideas for new features, improvements, or bug fixes, feel free to open an issue or submit a pull request.
+Contributions are welcome. Please follow standard fork → branch → pull request workflow.
 
-### How to Contribute
-
-1.  **Fork the repository** on GitHub.
-2.  **Create a new branch** for your feature or bug fix:
-    ```bash
-    git checkout -b feature-name
-    ```
-3.  **Make your changes** and commit them with a clear message.
-4.  **Push your branch** to your fork:
-    ```bash
-    git push origin feature-name
-    ```
-5.  **Open a pull request** to the `main` branch of the original repository.
-
-### Commit Message Format
-
-To maintain a clear and organized commit history, please follow this format for your commit messages:
+### Commit Format
 
 ```
 <type>(<scope>): <subject>
 ```
 
-*   **type**: `feat` (new feature), `fix` (bug fix), `docs` (documentation), `style` (code style changes), `refactor` (code refactoring), `test` (adding or improving tests), or `chore` (build-related changes).
-*   **scope** (optional): The part of the codebase you're changing (e.g., `parser`, `lexer`, `evaluator`).
-*   **subject**: A concise description of the change.
+Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
 
-**Example:**
+Example: `feat(parser): add support for unary minus`
 
-```
-feat(parser): Add support for unary minus
-```
-
-### Pull Request Guidelines
-
-When submitting a pull request, please include the following in your description:
-
-*   **A brief description of the changes**: Explain what you've changed and why.
-*   **Related issue**: If your PR addresses an open issue, link to it (e.g., `Closes #123`).
-*   **Testing**: Describe the tests you've added or how you've tested your changes manually.
-
-This will help reviewers understand your contribution and provide feedback more effectively.
-
-### Suggestions
-
-If you have suggestions for improving the project, you can open an issue with the `enhancement` label. Please provide a clear and detailed description of your suggestion.
+When opening a pull request, include a description of the change, any related issue, and how it was tested.
