@@ -27,7 +27,8 @@ A compiler for a custom expression language built in Rust, supporting variables,
 | Bitwise    | `&`, `|`, `^`, `<<`, `>>`          |
 | Comparison | `==`, `!=`, `<`, `>`, `<=`, `>=`   |
 | Logical    | `&&`, `||`, `!`                    |
-| Unary      | `-x`, `+x`, `!x`                   |
+| Unary      | `-x`, `+x`, `!x`, `++x`, `--x` (prefix) |
+| Postfix    | `x++`, `x--` (postfix)             |
 
 **Operator Precedence** (11 levels, lowest to highest):
 1. Logical OR (`||`)

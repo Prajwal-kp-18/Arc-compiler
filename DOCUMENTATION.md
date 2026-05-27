@@ -37,6 +37,7 @@ Converts source code into a stream of tokens.
 **Token Types** (36 total):
 - **Literals**: `Number`, `Float`, `Boolean`, `String`
 - **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`
+ - **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`
 - **Keywords**: `let`, `const`
 - **Delimiters**: `(`, `)`, `,`, `{`, `}`
 - **Special**: `=`, `;`, `EOF`, `Whitespace`
@@ -64,6 +65,7 @@ Builds an Abstract Syntax Tree (AST) using precedence climbing.
 - Identifiers (variable references)
 - Binary expressions (with operator precedence)
 - Unary expressions (`-x`, `+x`, `!x`)
+- Prefix increment/decrement (`++x`, `--x`) and postfix increment/decrement (`x++`, `x--`) are supported. Prefix forms evaluate to the updated value; postfix forms evaluate to the original value and then update the variable.
 - Parenthesized expressions
 - Function calls
 
