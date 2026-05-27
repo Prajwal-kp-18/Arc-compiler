@@ -1,17 +1,39 @@
-//! Evaluator - executes AST and produces values
+//! # Evaluator
+//!
+//! Walks an AST produced by the [`Parser`](crate::ast::parser::Parser) and
+//! computes a [`Value`] for each expression.
+//!
+//! ## Error handling
+//!
+//! Errors are accumulated in [`ASTEvaluator::errors`] rather than aborting
+//! immediately, so a single pass can surface multiple problems.
+//!
+//! ## Short-circuit evaluation
+//!
+//! `&&` and `||` skip the right operand when the result is determined by the
+//! left operand alone, matching standard boolean semantics.
 
 use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression};
 use crate::ast::types::Value;
 use crate::ast::symbol_table::SymbolTable;
 
-/// Evaluates AST nodes and maintains execution state
+/// Evaluates an Arc AST, maintaining interpreter state across statements.
+///
+/// After calling [`Ast::visit`](crate::ast::Ast::visit):
+/// - [`last_value`](ASTEvaluator::last_value) holds the result of the most
+///   recently evaluated expression (if any).
+/// - [`errors`](ASTEvaluator::errors) holds any runtime errors encountered.
 pub struct ASTEvaluator {
+    /// The value produced by the most recently evaluated expression.
     pub last_value: Option<Value>,
+    /// Runtime errors accumulated during evaluation.
     pub errors: Vec<String>,
+    /// Variable storage for the current execution context.
     pub symbol_table: SymbolTable,
 }
 
 impl ASTEvaluator {
+    /// Creates a new evaluator with an empty symbol table and no errors.
     pub fn new() -> Self {
         Self { 
             last_value: None,
@@ -30,7 +52,14 @@ impl ASTVisitor for ASTEvaluator {
         self.last_value = Some(number.value.clone());
     }
 
-    /// Evaluates binary operations with short-circuit logic for && and ||
+    /// Evaluates a binary expression.
+    ///
+    /// `&&` and `||` use short-circuit logic: if the left operand determines
+    /// the result, the right operand is not evaluated.
+    ///
+    /// All other operators evaluate both operands before computing the result.
+    /// Type coercion (e.g. `int + float`) is handled by
+    /// [`Value::coerce_to_common_type`].
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
         // Handle short-circuit evaluation for logical operators (optimization + correctness)
         match expr.operator.kind {
@@ -410,6 +439,10 @@ impl ASTVisitor for ASTEvaluator {
         }
     }
 
+    /// Dispatches to built-in function implementations.
+    ///
+    /// Currently only `print` is supported. Unknown function names are reported
+    /// as errors via [`ASTEvaluator::errors`].
     fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
         match func_call.name.as_str() {
             "print" => {

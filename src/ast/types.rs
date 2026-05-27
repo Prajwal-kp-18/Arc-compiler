@@ -1,27 +1,52 @@
-//! Type system - defines data types and values with operations
+//! # Type System
+//!
+//! Defines the runtime [`Value`] enum and the static [`DataType`] enum used
+//! by the symbol table, as well as the coercion and comparison logic that
+//! operates on values.
+//!
+//! ## Coercion rules
+//!
+//! | Left | Right | Result |
+//! |------|-------|--------|
+//! | Integer | Integer | Integer |
+//! | Float | Float | Float |
+//! | Integer | Float | Float (integer widened) |
+//! | String | any | String (other side converted via `Display`) |
+//! | Boolean | Boolean | Boolean |
+//!
+//! ## Truthiness
+//!
+//! | Value | Truthy? |
+//! |-------|---------|
+//! | `false` / `0` / `0.0` / `""` | no |
+//! | everything else | yes |
 
 use std::fmt;
 
-/// Data types supported by Arc language
+/// The static type of a variable as tracked by the [`SymbolTable`](crate::ast::symbol_table::SymbolTable).
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataType {
     Integer,
     Float,
     Boolean,
     String,
+    /// Placeholder for not-yet-known types.
     Unknown,
 }
 
-/// Runtime value with type information
+/// A runtime value produced by the evaluator.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+    /// 64-bit signed integer.
     Integer(i64),
+    /// IEEE 754 double-precision float.
     Float(f64),
     Boolean(bool),
     String(String),
 }
 
 impl Value {
+    /// Returns the [`DataType`] corresponding to this value's variant.
     pub fn get_type(&self) -> DataType {
         match self {
             Value::Integer(_) => DataType::Integer,
@@ -31,7 +56,9 @@ impl Value {
         }
     }
 
-    /// Converts values to common type for operations (e.g., int to float)
+    /// Coerces `left` and `right` to a common type for binary operations.
+    ///
+    /// Returns `Err` if no implicit conversion exists between the two types.
     pub fn coerce_to_common_type(left: &Value, right: &Value) -> Result<(Value, Value), String> {
         match (left, right) {
             // Same types - no coercion needed
@@ -39,20 +66,19 @@ impl Value {
             (Value::Float(l), Value::Float(r)) => Ok((Value::Float(*l), Value::Float(*r))),
             (Value::Boolean(l), Value::Boolean(r)) => Ok((Value::Boolean(*l), Value::Boolean(*r))),
             (Value::String(l), Value::String(r)) => Ok((Value::String(l.clone()), Value::String(r.clone()))),
-            
-            // Integer to Float coercion
+            // Widen integer to float
             (Value::Integer(i), Value::Float(f)) => Ok((Value::Float(*i as f64), Value::Float(*f))),
             (Value::Float(f), Value::Integer(i)) => Ok((Value::Float(*f), Value::Float(*i as f64))),
-            
-            // String concatenation with any type
+            // String absorbs the other side via Display
             (Value::String(s), other) => Ok((Value::String(s.clone()), Value::String(other.to_string()))),
             (other, Value::String(s)) => Ok((Value::String(other.to_string()), Value::String(s.clone()))),
-            
             _ => Err(format!("Cannot coerce {:?} and {:?} to a common type", left.get_type(), right.get_type())),
         }
     }
 
-    /// Convert value to boolean for logical operations
+    /// Returns the boolean interpretation of a value.
+    ///
+    /// `false`, `0`, `0.0`, and `""` are falsy; everything else is truthy.
     pub fn to_boolean(&self) -> bool {
         match self {
             Value::Boolean(b) => *b,
@@ -62,7 +88,10 @@ impl Value {
         }
     }
 
-    /// Convert value to integer (for bitwise operations)
+    /// Converts a value to `i64` for use in bitwise operations.
+    ///
+    /// Returns `Err` for `String` values, which cannot be meaningfully
+    /// interpreted as integers.
     pub fn to_integer(&self) -> Result<i64, String> {
         match self {
             Value::Integer(i) => Ok(*i),
@@ -72,14 +101,15 @@ impl Value {
         }
     }
 
-    /// Compare two values for equality
+    /// Tests two values for equality, allowing `Integer`↔`Float` comparison.
+    ///
+    /// Float equality uses an epsilon of [`f64::EPSILON`].
     pub fn equals(&self, other: &Value) -> Result<bool, String> {
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => Ok(a == b),
             (Value::Float(a), Value::Float(b)) => Ok((a - b).abs() < f64::EPSILON),
             (Value::Boolean(a), Value::Boolean(b)) => Ok(a == b),
             (Value::String(a), Value::String(b)) => Ok(a == b),
-            // Allow comparison between int and float
             (Value::Integer(i), Value::Float(f)) | (Value::Float(f), Value::Integer(i)) => {
                 Ok((*i as f64 - f).abs() < f64::EPSILON)
             },
@@ -87,10 +117,12 @@ impl Value {
         }
     }
 
-    /// Compare two values with ordering
+    /// Orders two values, allowing `Integer`↔`Float` comparison.
+    ///
+    /// Strings are ordered lexicographically.
     pub fn compare(&self, other: &Value) -> Result<std::cmp::Ordering, String> {
         use std::cmp::Ordering;
-        
+
         match (self, other) {
             (Value::Integer(a), Value::Integer(b)) => Ok(a.cmp(b)),
             (Value::Float(a), Value::Float(b)) => {

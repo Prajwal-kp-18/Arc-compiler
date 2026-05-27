@@ -1,4 +1,31 @@
-//! Parser - converts tokens into Abstract Syntax Tree using recursive descent
+//! # Parser
+//!
+//! Converts a flat token stream from the [`Lexer`](crate::ast::lexer::Lexer)
+//! into an Abstract Syntax Tree using **recursive descent** with
+//! **operator-precedence climbing** for binary expressions.
+//!
+//! ## Precedence table (lowest → highest)
+//!
+//! | Level | Operators |
+//! |-------|-----------|
+//! | 1 | `\|\|` |
+//! | 2 | `&&` |
+//! | 3 | `==` `!=` |
+//! | 4 | `<` `>` `<=` `>=` |
+//! | 5 | `\|` |
+//! | 6 | `^` |
+//! | 7 | `&` |
+//! | 8 | `<<` `>>` |
+//! | 9 | `+` `-` |
+//! | 10 | `*` `/` `%` |
+//! | 11 | `**` |
+//!
+//! ## Statement dispatch
+//!
+//! [`Parser::parse_statement`] uses one token of lookahead to decide:
+//! - `let` / `const` → variable declaration
+//! - `identifier =` → assignment
+//! - anything else → expression statement
 
 use crate::ast::lexer::Token;
 use crate::ast::ASTBinaryOperator;
@@ -8,13 +35,18 @@ use crate::ast::ASTUnaryOperatorKind;
 use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTFunctionCallExpression};
 use crate::ast::lexer::TokenKind;
 
-/// Converts token stream into AST using recursive descent with precedence climbing
+/// Parses a token stream into an AST.
+///
+/// Whitespace tokens are stripped on construction. Call
+/// [`next_statement`](Parser::next_statement) in a loop until it returns
+/// `None` (EOF) to obtain all statements.
 pub struct Parser {
     tokens: Vec<crate::ast::lexer::Token>,
     current: usize,
 }
 
 impl Parser {
+    /// Creates a parser from a token list, filtering out whitespace.
     pub fn new(
         tokens: Vec<Token>,
     ) -> Self {
@@ -33,11 +65,16 @@ impl Parser {
 
     
 
+    /// Returns the next parsed statement, or `None` at EOF.
     pub fn next_statement(&mut self) -> Option<ASTStatement>{
         return self.parse_statement();
     }
 
-    /// Parses a statement (variable declaration, assignment, or expression)
+    /// Dispatches to the correct statement parser based on the current token.
+    ///
+    /// - `let` / `const` → [`parse_variable_declaration`](Self::parse_variable_declaration)
+    /// - `identifier =` → [`parse_assignment`](Self::parse_assignment)
+    /// - otherwise → expression statement
     pub fn parse_statement(&mut self) -> Option<ASTStatement> {
         let token: &Token = self.current()?;
         if token.kind == TokenKind::EOF {
@@ -67,12 +104,13 @@ impl Parser {
         return Some(ASTStatement::expression(expr));
     }
 
-    /// Parses 'let' or 'const' variable declarations
+    /// Parses `let <name> = <expr>` or `const <name> = <expr>`.
+    ///
+    /// Returns `None` and prints a diagnostic if the syntax is malformed.
     pub fn parse_variable_declaration(&mut self) -> Option<ASTStatement> {
         let keyword = self.consume()?;
         let is_mutable = keyword.kind == TokenKind::Let;
         
-        // Expect identifier
         let name_token = self.consume()?;
         let name = match name_token.kind {
             TokenKind::Identifier(ref n) => n.clone(),
@@ -83,16 +121,12 @@ impl Parser {
             }
         };
         
-        // Expect '='
         if self.consume()?.kind != TokenKind::Equal {
             eprintln!("Expected '=' after variable name");
             return None;
         }
         
-        // Parse initializer expression
         let initializer = self.parse_expression()?;
-        
-        // Consume optional semicolon
         if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
             self.consume();
         }
@@ -102,24 +136,20 @@ impl Parser {
         ))
     }
 
-    /// Parses assignment statements (identifier = expression)
+    /// Parses `<name> = <expr>`.
     pub fn parse_assignment(&mut self) -> Option<ASTStatement> {
         let name_token = self.consume()?;
         let name = match &name_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
         };
-        
-        // Consume '='
+
         if self.consume()?.kind != TokenKind::Equal {
             eprintln!("Expected '=' in assignment");
             return None;
         }
-        
-        // Parse value expression
+
         let value = self.parse_expression()?;
-        
-        // Consume optional semicolon
         if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
             self.consume();
         }
@@ -131,7 +161,10 @@ impl Parser {
         return self.parse_binary_expression(0);
     }
 
-    /// Parses binary expressions using operator precedence climbing
+    /// Parses a binary expression using operator-precedence climbing.
+    ///
+    /// Continues consuming operators whose precedence is ≥ `precedence`,
+    /// recursing with the current level to build a left-associative tree.
     pub fn parse_binary_expression(&mut self, precedence: u8) -> Option<ASTExpression> {
         let mut left: ASTExpression = self.parse_primary_expression()?;
 
@@ -140,14 +173,12 @@ impl Parser {
             let operator = self.parse_binary_operator();
             let operator_precedence = match operator.as_ref().map(|op| op.precedence()) {
                 Some(op_prec) => op_prec,
-                None => break, // Not an operator, we're done
+                None => break,
             };
-            // Only consume operators with higher precedence than current level
             if operator_precedence < precedence {
                 break;
             }
-            self.consume(); // Consume the operator token
-            // Recursively parse right side with current operator's precedence
+            self.consume();
             let right: ASTExpression = self.parse_binary_expression(operator_precedence)?;
             left = ASTExpression::binary(operator.unwrap(), left, right);
         }
@@ -155,7 +186,10 @@ impl Parser {
         return Some(left);
     }
 
-    /// Parses primary expressions (literals, identifiers, function calls, parenthesized expressions)
+    /// Parses a primary (non-binary) expression.
+    ///
+    /// Handles literals, identifiers, function calls (identifier followed by
+    /// `(`), parenthesized expressions, and unary operators.
     pub fn parse_primary_expression(&mut self) -> Option<ASTExpression> {
         let token: &Token = self.current()?;
         let token_kind = token.kind.clone();
@@ -179,30 +213,27 @@ impl Parser {
             },
             TokenKind::Identifier(name) => {
                 self.consume();
-                // Check if this is a function call (identifier followed by '(')
                 if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
-                    self.consume(); // consume '('
+                    self.consume();
                     let mut arguments = Vec::new();
-                    
-                    // Parse comma-separated argument list
+
                     if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
                         loop {
                             let arg = self.parse_expression()?;
                             arguments.push(arg);
-                            
-                            // Continue if comma found, otherwise done with arguments
+
                             if self.current().map(|t| &t.kind) == Some(&TokenKind::Comma) {
-                                self.consume(); // consume ','
+                                self.consume();
                             } else {
                                 break;
                             }
                         }
                     }
-                    
+
                     if self.consume()?.kind != TokenKind::RightParen {
                         panic!("Expected closing parenthesis after function arguments");
                     }
-                    
+
                     return Some(ASTExpression::function_call(name, arguments));
                 } else {
                     return Some(ASTExpression::identifier(name));
@@ -232,7 +263,10 @@ impl Parser {
         }
     }
 
-    /// Identifies binary operators and returns with precedence info
+    /// Attempts to parse the current token as a binary operator.
+    ///
+    /// Returns `None` if the current token is not an operator, which signals
+    /// the end of a binary expression to the precedence climber.
     pub fn parse_binary_operator(&mut self) -> Option<ASTBinaryOperator> {
         let token: &Token = self.current()?;
         let kind = match token.kind {
@@ -262,6 +296,7 @@ impl Parser {
         return kind.map(|kind| ASTBinaryOperator::new(kind, token.clone()));
     }
 
+    /// Returns the token at `current + offset` without advancing.
     pub fn peek(&self, offset: isize) -> Option<&Token> {
         self.tokens.get((self.current as isize + offset) as usize)
     }
@@ -270,6 +305,7 @@ impl Parser {
         self.peek(0)
     }
 
+    /// Advances past the current token and returns it.
     pub fn consume(&mut self) -> Option<&Token> {
         self.current += 1;
         let token: &Token = self.peek(-1)?;

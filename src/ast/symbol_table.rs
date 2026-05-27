@@ -1,14 +1,34 @@
-//! Symbol table - manages variables and scopes
+//! # Symbol Table
+//!
+//! Manages variable storage across nested lexical scopes.
+//!
+//! ## Structure
+//!
+//! A [`SymbolTable`] owns a stack of [`Scope`]s. Variable lookup walks the
+//! stack from innermost to outermost (standard lexical scoping). Entering a
+//! block calls [`enter_scope`](SymbolTable::enter_scope); exiting calls
+//! [`exit_scope`](SymbolTable::exit_scope).
+//!
+//! ## Mutability
+//!
+//! Variables declared with `let` are mutable; those declared with `const` are
+//! not. Attempting to assign to an immutable variable returns an `Err`.
+//!
+//! ## Type checking on assignment
+//!
+//! The assigned value's type must match the variable's declared type.
+//! The only implicit widening allowed is `Integer → Float`.
 
 use crate::ast::types::{DataType, Value};
 use std::collections::HashMap;
 
-/// Variable storage with type and mutability info
+/// A single variable binding with its value, type, and mutability.
 #[derive(Debug, Clone)]
 pub struct Symbol {
     pub name: String,
     pub value: Value,
     pub data_type: DataType,
+    /// `true` for `let`, `false` for `const`.
     pub is_mutable: bool,
     pub is_initialized: bool,
 }
@@ -25,7 +45,7 @@ impl Symbol {
     }
 }
 
-/// Single scope level containing variables
+/// A single scope level — a flat map of name → [`Symbol`].
 #[derive(Debug, Clone)]
 pub struct Scope {
     symbols: HashMap<String, Symbol>,
@@ -59,25 +79,30 @@ impl Scope {
     }
 }
 
-/// Manages nested scopes for variable lookup and assignment
+/// A lexically scoped symbol table.
+///
+/// Maintains a stack of [`Scope`]s; the first element is always the global scope.
 #[derive(Debug)]
 pub struct SymbolTable {
     scopes: Vec<Scope>,
 }
 
 impl SymbolTable {
+    /// Creates a symbol table with a single global scope.
     pub fn new() -> Self {
         SymbolTable {
             scopes: vec![Scope::new()], // Start with global scope
         }
     }
 
-    /// Enter a new scope
+    /// Pushes a new inner scope onto the stack.
     pub fn enter_scope(&mut self) {
         self.scopes.push(Scope::new());
     }
 
-    /// Exit current scope
+    /// Pops the current scope.
+    ///
+    /// Returns `Err` if called while only the global scope remains.
     pub fn exit_scope(&mut self) -> Result<(), String> {
         if self.scopes.len() <= 1 {
             return Err("Cannot exit global scope".to_string());
@@ -86,12 +111,14 @@ impl SymbolTable {
         Ok(())
     }
 
-    /// Get current scope depth
+    /// Returns the current nesting depth (1 = global only).
     pub fn scope_depth(&self) -> usize {
         self.scopes.len()
     }
 
-    /// Define a new variable in the current scope
+    /// Declares a new variable in the innermost scope.
+    ///
+    /// Returns `Err` if the name is already declared in the current scope.
     pub fn define(&mut self, name: String, value: Value, is_mutable: bool) -> Result<(), String> {
         let data_type = value.get_type();
         let symbol = Symbol::new(name.clone(), value, data_type, is_mutable);
@@ -103,7 +130,7 @@ impl SymbolTable {
         }
     }
 
-    /// Look up a variable by name (searches from current scope up to global)
+    /// Looks up a variable by name, searching from innermost to outermost scope.
     pub fn lookup(&self, name: &str) -> Option<&Symbol> {
         // Search from innermost to outermost scope (lexical scoping)
         for scope in self.scopes.iter().rev() {
@@ -111,10 +138,17 @@ impl SymbolTable {
                 return Some(symbol); // Return first match found
             }
         }
-        None // Variable not found in any scope
+        None
     }
 
-    /// Assign a value to an existing variable
+    /// Assigns a new value to an existing variable.
+    ///
+    /// # Errors
+    ///
+    /// - `"Cannot assign to immutable variable '…'"` if declared with `const`.
+    /// - `"Type mismatch: …"` if the new value's type differs from the declared
+    ///   type and is not an `Integer → Float` widening.
+    /// - `"Variable '…' not found"` if the name is undefined in any scope.
     pub fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
         // Search from innermost to outermost scope
         for scope in self.scopes.iter_mut().rev() {
@@ -130,7 +164,7 @@ impl SymbolTable {
                     // Special case: allow int to float widening conversion
                     if !(symbol.data_type == DataType::Float && new_type == DataType::Integer) {
                         return Err(format!(
-                            "Type mismatch: variable '{}' has type {:?}, cannot assign value of type {:?}",
+                            "Type mismatch: variable '{}' has type {:?}, cannot assign {:?}",
                             name, symbol.data_type, new_type
                         ));
                     }
@@ -145,16 +179,18 @@ impl SymbolTable {
                 return Ok(());
             }
         }
-        
+
         Err(format!("Variable '{}' not found", name))
     }
 
-    /// Check if a variable exists in any scope
+    /// Returns `true` if the name is defined in any scope.
     pub fn exists(&self, name: &str) -> bool {
         self.lookup(name).is_some()
     }
 
-    /// Get the value of a variable
+    /// Returns a clone of the variable's current value.
+    ///
+    /// Returns `Err` if the variable is not defined.
     pub fn get_value(&self, name: &str) -> Result<Value, String> {
         match self.lookup(name) {
             Some(symbol) => Ok(symbol.value.clone()),
@@ -162,7 +198,9 @@ impl SymbolTable {
         }
     }
 
-    /// Check if a variable is mutable
+    /// Returns whether the named variable is mutable.
+    ///
+    /// Returns `Err` if the variable is not defined.
     pub fn is_mutable(&self, name: &str) -> Result<bool, String> {
         match self.lookup(name) {
             Some(symbol) => Ok(symbol.is_mutable),

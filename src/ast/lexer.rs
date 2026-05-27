@@ -1,6 +1,31 @@
-//! Lexical analyzer - converts source code into tokens
+//! # Lexer
+//!
+//! Converts Arc source text into a flat stream of [`Token`]s.
+//!
+//! ## Usage
+//!
+//! ```rust
+//! use Arc_compiler::ast::lexer::{Lexer, TokenKind};
+//!
+//! let mut lexer = Lexer::new("let x = 42");
+//! while let Some(token) = lexer.next_token() {
+//!     if token.kind == TokenKind::EOF { break; }
+//!     println!("{:?}", token.kind);
+//! }
+//! ```
+//!
+//! ## Token types
+//!
+//! - **Literals** — `Number`, `Float`, `Boolean`, `String`
+//! - **Operators** — arithmetic, bitwise, comparison, logical
+//! - **Keywords** — `let`, `const`
+//! - **Delimiters** — parentheses, braces, comma, semicolon
+//! - **Special** — `Identifier`, `EOF`, `Bad` (unrecognised character)
+//!
+//! Comments (`//` and `/* */`) are consumed and emitted as `Whitespace`,
+//! which the parser filters out before processing.
 
-/// Represents different token types in Arc language
+/// Every distinct token kind in the Arc language.
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Number(i64),
@@ -45,7 +70,7 @@ pub enum TokenKind {
     Identifier(String),
 }  
 
-/// Tracks location and content of a token in source code
+/// The byte range and original text of a token in the source.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TextSpan {
     pub(crate) start: usize,
@@ -58,12 +83,13 @@ impl TextSpan {
         Self { start, end, literal }
     }
 
+    /// Returns the length of this span in bytes.
     pub fn length(&self) -> usize {
         self.end - self.start
     }
 }
 
-/// A token with its type and source location
+/// A single token: its kind and the source span it covers.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
      pub(crate) kind: TokenKind,
@@ -76,13 +102,17 @@ impl Token {
     }
 }
 
-/// Tokenizes Arc source code into a stream of tokens
+/// Tokenizes Arc source code.
+///
+/// Call [`next_token`](Lexer::next_token) repeatedly until [`TokenKind::EOF`]
+/// is returned.
 pub struct Lexer<'o> {
     pub input: &'o str,
     pub current_pos: usize,
 }
 
-impl <'o> Lexer<'o> {
+impl<'o> Lexer<'o> {
+    /// Creates a new lexer for the given source string.
     pub fn new(input: &'o str) -> Self {
         Self {
             input,
@@ -90,7 +120,9 @@ impl <'o> Lexer<'o> {
         }
     }
 
-    /// Returns the next token from input stream
+    /// Returns the next token, or `None` if the cursor is past the end.
+    ///
+    /// [`TokenKind::EOF`] is emitted once when the end of input is reached.
     pub fn next_token(&mut self) -> Option<Token> {
         if self.current_pos == self.input.len() {
             self.current_pos += 1;
@@ -128,7 +160,12 @@ impl <'o> Lexer<'o> {
         c.is_whitespace() 
     }
 
-    /// Handles operators and punctuation, including multi-character operators
+    /// Tokenizes a single punctuation character or multi-character operator.
+    ///
+    /// Performs one-character lookahead for two-character operators such as
+    /// `**`, `==`, `!=`, `<<`, `>>`, `&&`, `||`, `<=`, `>=`.
+    /// Comment sequences (`//`, `/*`) are consumed here and returned as
+    /// [`TokenKind::Whitespace`].
     pub fn consume_punctuation(&mut self) -> TokenKind {
         let c: char = self.consume().unwrap();
         match c {
@@ -268,7 +305,10 @@ impl <'o> Lexer<'o> {
         number
     }
 
-    /// Parses numeric literals (integers or floats)
+    /// Parses an integer or floating-point literal.
+    ///
+    /// A `.` is treated as a decimal point only when followed by another digit,
+    /// so `obj.method` is not misread as a float.
     pub fn consume_number_or_float(&mut self) -> TokenKind {
         let mut number_str = String::new();
         let mut is_float = false;
@@ -303,7 +343,10 @@ impl <'o> Lexer<'o> {
         }
     }
 
-    /// Parses string literals with escape sequence support
+    /// Parses a double-quoted string literal, handling escape sequences.
+    ///
+    /// Supported escapes: `\n`, `\t`, `\r`, `\\`, `\"`.
+    /// Unknown escapes preserve the backslash and the following character.
     pub fn consume_string(&mut self) -> TokenKind {
         self.consume(); // consume opening quote
         let mut string = String::new();
@@ -339,7 +382,10 @@ impl <'o> Lexer<'o> {
         TokenKind::String(string)
     }
 
-    /// Parses identifiers and keywords (let, const, true, false)
+    /// Parses an identifier or keyword.
+    ///
+    /// Matches `true`, `false`, `let`, and `const` as keyword tokens;
+    /// everything else becomes [`TokenKind::Identifier`].
     pub fn consume_identifier(&mut self) -> TokenKind {
         let mut identifier = String::new();
         
@@ -362,10 +408,12 @@ impl <'o> Lexer<'o> {
         }
     }
 
+    /// Returns the character at `current_pos + offset` without advancing.
     pub fn peek_char(&self, offset: usize) -> Option<char> {
         self.input.chars().nth(self.current_pos + offset)
     }
 
+    /// Skips characters until (but not including) the next newline.
     pub fn consume_single_line_comment(&mut self) {
         // Consume until newline or end of input
         while let Some(c) = self.current_char() {
@@ -376,6 +424,7 @@ impl <'o> Lexer<'o> {
         }
     }
 
+    /// Skips characters until the closing `*/`, inclusive.
     pub fn consume_multi_line_comment(&mut self) {
         // Consume until */ or end of input
         while let Some(c) = self.current_char() {
