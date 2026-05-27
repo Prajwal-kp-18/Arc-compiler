@@ -571,6 +571,78 @@ impl ASTVisitor for ASTEvaluator {
                 // print() doesn't return a value
                 self.last_value = None;
             }
+            "max" => {
+                // Evaluate all arguments
+                let mut values: Vec<Value> = Vec::new();
+                for arg in &func_call.arguments {
+                    self.visit_expression(arg);
+                    if let Some(v) = &self.last_value {
+                        values.push(v.clone());
+                    } else {
+                        self.add_error("Failed to evaluate argument to max()".to_string());
+                        self.last_value = None;
+                        return;
+                    }
+                }
+
+                if values.is_empty() {
+                    self.add_error("max() requires at least one argument".to_string());
+                    self.last_value = None;
+                    return;
+                }
+
+                // Reduce using compare
+                let mut current = values.remove(0);
+                for v in values {
+                    match current.compare(&v) {
+                        Ok(std::cmp::Ordering::Less) => current = v,
+                        Ok(_) => (),
+                        Err(e) => {
+                            self.add_error(format!("max() comparison error: {}", e));
+                            self.last_value = None;
+                            return;
+                        }
+                    }
+                }
+
+                self.last_value = Some(current);
+            }
+            "min" => {
+                // Evaluate all arguments
+                let mut values: Vec<Value> = Vec::new();
+                for arg in &func_call.arguments {
+                    self.visit_expression(arg);
+                    if let Some(v) = &self.last_value {
+                        values.push(v.clone());
+                    } else {
+                        self.add_error("Failed to evaluate argument to min()".to_string());
+                        self.last_value = None;
+                        return;
+                    }
+                }
+
+                if values.is_empty() {
+                    self.add_error("min() requires at least one argument".to_string());
+                    self.last_value = None;
+                    return;
+                }
+
+                // Reduce using compare
+                let mut current = values.remove(0);
+                for v in values {
+                    match current.compare(&v) {
+                        Ok(std::cmp::Ordering::Greater) => current = v,
+                        Ok(_) => (),
+                        Err(e) => {
+                            self.add_error(format!("min() comparison error: {}", e));
+                            self.last_value = None;
+                            return;
+                        }
+                    }
+                }
+
+                self.last_value = Some(current);
+            }
             _ => {
                 self.add_error(format!("Unknown function: '{}'", func_call.name));
                 self.last_value = None;
