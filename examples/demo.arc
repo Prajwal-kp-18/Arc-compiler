@@ -51,4 +51,12 @@ print(x)
 // Const variables cannot be reassigned (this would cause an error)
 // PI = 3.14  // Uncommenting this will cause an error
 
+// Increment and Decrement
+print("let abc = 10")
+let abc = 10
+abc++
+print("Value of abc after incrementing: ", abc)
+abc--
+print("Value of abc after decrementing: ", abc)
+
 print("=== Demo Complete ===")
