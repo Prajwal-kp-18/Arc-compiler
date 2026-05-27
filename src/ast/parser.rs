@@ -213,7 +213,7 @@ impl Parser {
             },
             TokenKind::Identifier(name) => {
                 self.consume();
-                if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
+                let mut expr = if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
                     self.consume();
                     let mut arguments = Vec::new();
 
@@ -234,10 +234,14 @@ impl Parser {
                         panic!("Expected closing parenthesis after function arguments");
                     }
 
-                    return Some(ASTExpression::function_call(name, arguments));
+                    ASTExpression::function_call(name, arguments)
                 } else {
-                    return Some(ASTExpression::identifier(name));
-                }
+                    ASTExpression::identifier(name)
+                };
+
+                // Check for postfix operators (++ and --)
+                expr = self.parse_postfix_operators(expr)?;
+                return Some(expr);
             },
             TokenKind::LeftParen => {
                 self.consume();
@@ -247,12 +251,14 @@ impl Parser {
                 }
                 return Some(ASTExpression::paranthesized(expression));
             },
-            TokenKind::Plus | TokenKind::Minus | TokenKind::Bang => {
+            TokenKind::Plus | TokenKind::Minus | TokenKind::Bang | TokenKind::PlusPlus | TokenKind::MinusMinus => {
                 let operator_token = self.consume()?.clone();
                 let kind = match operator_token.kind {
                     TokenKind::Plus => ASTUnaryOperatorKind::Plus,
                     TokenKind::Minus => ASTUnaryOperatorKind::Minus,
                     TokenKind::Bang => ASTUnaryOperatorKind::LogicalNot,
+                    TokenKind::PlusPlus => ASTUnaryOperatorKind::Increment,
+                    TokenKind::MinusMinus => ASTUnaryOperatorKind::Decrement,
                     _ => unreachable!(),
                 };
                 let operator = ASTUnaryOperator::new(kind, operator_token);
@@ -294,6 +300,27 @@ impl Parser {
             _ => None,
         };
         return kind.map(|kind| ASTBinaryOperator::new(kind, token.clone()));
+    }
+
+    /// Parses postfix operators (++ and --) that follow an expression.
+    pub fn parse_postfix_operators(&mut self, expr: ASTExpression) -> Option<ASTExpression> {
+        let mut result = expr;
+        loop {
+            match self.current().map(|t| &t.kind) {
+                Some(TokenKind::PlusPlus) => {
+                    let operator_token = self.consume()?.clone();
+                    let operator = ASTUnaryOperator::new(ASTUnaryOperatorKind::Increment, operator_token);
+                    result = ASTExpression::postfix_unary(result, operator);
+                }
+                Some(TokenKind::MinusMinus) => {
+                    let operator_token = self.consume()?.clone();
+                    let operator = ASTUnaryOperator::new(ASTUnaryOperatorKind::Decrement, operator_token);
+                    result = ASTExpression::postfix_unary(result, operator);
+                }
+                _ => break,
+            }
+        }
+        Some(result)
     }
 
     /// Returns the token at `current + offset` without advancing.

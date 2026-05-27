@@ -64,6 +64,9 @@ pub enum TokenKind {
     Let,
     Const,
     Semicolon,
+    // Increment and decrement operators
+    PlusPlus,
+    MinusMinus,
     Bad,
     EOF,
     Whitespace,
@@ -169,8 +172,24 @@ impl<'o> Lexer<'o> {
     pub fn consume_punctuation(&mut self) -> TokenKind {
         let c: char = self.consume().unwrap();
         match c {
-            '+' => TokenKind::Plus,
-            '-' => TokenKind::Minus,
+            '+' => {
+                // Check for ++ (increment)
+                if self.current_char() == Some('+') {
+                    self.consume();
+                    TokenKind::PlusPlus
+                } else {
+                    TokenKind::Plus
+                }
+            },
+            '-' => {
+                // Check for -- (decrement)
+                if self.current_char() == Some('-') {
+                    self.consume();
+                    TokenKind::MinusMinus
+                } else {
+                    TokenKind::Minus
+                }
+            },
             '*' => {
                 // Lookahead for ** (exponentiation) vs single * (multiply)
                 if self.current_char() == Some('*') {

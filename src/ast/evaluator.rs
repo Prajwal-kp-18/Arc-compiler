@@ -13,7 +13,7 @@
 //! `&&` and `||` skip the right operand when the result is determined by the
 //! left operand alone, matching standard boolean semantics.
 
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression};
 use crate::ast::types::Value;
 use crate::ast::symbol_table::SymbolTable;
 
@@ -368,29 +368,128 @@ impl ASTVisitor for ASTEvaluator {
     }
 
     fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
-        self.visit_expression(&unary_expr.operand);
-        let operand = match &self.last_value {
-            Some(v) => v.clone(),
-            None => {
-                self.add_error("Operand evaluation failed".to_string());
-                return;
-            }
-        };
-        
-        self.last_value = match unary_expr.operator.kind {
-            ASTUnaryOperatorKind::Plus => Some(operand),
-            ASTUnaryOperatorKind::Minus => match operand {
-                Value::Integer(i) => Some(Value::Integer(-i)),
-                Value::Float(f) => Some(Value::Float(-f)),
-                _ => {
-                    self.add_error(format!("Cannot negate {:?}", operand.get_type()));
-                    None
+        // For increment/decrement, we need to handle them specially
+        match unary_expr.operator.kind {
+            ASTUnaryOperatorKind::Increment | ASTUnaryOperatorKind::Decrement => {
+                // For prefix ++/-- the operand must be an identifier
+                if let crate::ast::ASTExpressionKind::Identifier(ident) = &unary_expr.operand.kind {
+                    let name = &ident.name;
+                    // Get current value
+                    match self.symbol_table.get_value(name) {
+                        Ok(value) => {
+                            let new_value = match unary_expr.operator.kind {
+                                ASTUnaryOperatorKind::Increment => match value {
+                                    Value::Integer(i) => Value::Integer(i + 1),
+                                    Value::Float(f) => Value::Float(f + 1.0),
+                                    _ => {
+                                        self.add_error(format!("Cannot increment {:?}", value.get_type()));
+                                        return;
+                                    }
+                                },
+                                ASTUnaryOperatorKind::Decrement => match value {
+                                    Value::Integer(i) => Value::Integer(i - 1),
+                                    Value::Float(f) => Value::Float(f - 1.0),
+                                    _ => {
+                                        self.add_error(format!("Cannot decrement {:?}", value.get_type()));
+                                        return;
+                                    }
+                                },
+                                _ => unreachable!(),
+                            };
+                            // Assign the new value (prefix returns new value)
+                            if let Err(e) = self.symbol_table.assign(name, new_value.clone()) {
+                                self.add_error(e);
+                                return;
+                            }
+                            self.last_value = Some(new_value);
+                        }
+                        Err(e) => {
+                            self.add_error(e);
+                            return;
+                        }
+                    }
+                } else {
+                    self.add_error("Increment/Decrement can only be applied to variables".to_string());
+                    return;
                 }
-            },
-            ASTUnaryOperatorKind::LogicalNot => {
-                Some(Value::Boolean(!operand.to_boolean()))
-            },
-        };
+            }
+            _ => {
+                // For other unary operators, evaluate the operand normally
+                self.visit_expression(&unary_expr.operand);
+                let operand = match &self.last_value {
+                    Some(v) => v.clone(),
+                    None => {
+                        self.add_error("Operand evaluation failed".to_string());
+                        return;
+                    }
+                };
+                
+                self.last_value = match unary_expr.operator.kind {
+                    ASTUnaryOperatorKind::Plus => Some(operand),
+                    ASTUnaryOperatorKind::Minus => match operand {
+                        Value::Integer(i) => Some(Value::Integer(-i)),
+                        Value::Float(f) => Some(Value::Float(-f)),
+                        _ => {
+                            self.add_error(format!("Cannot negate {:?}", operand.get_type()));
+                            None
+                        }
+                    },
+                    ASTUnaryOperatorKind::LogicalNot => {
+                        Some(Value::Boolean(!operand.to_boolean()))
+                    },
+                    _ => unreachable!(),
+                };
+            }
+        }
+    }
+
+    fn visit_postfix_unary_expression(&mut self, postfix_expr: &ASTPostfixUnaryExpression) {
+        // For postfix ++/--, the operand must be an identifier
+        if let crate::ast::ASTExpressionKind::Identifier(ident) = &postfix_expr.operand.kind {
+            let name = &ident.name;
+            // Get current value
+            match self.symbol_table.get_value(name) {
+                Ok(value) => {
+                    // For postfix, we return the old value before incrementing/decrementing
+                    let old_value = value.clone();
+                    let new_value = match postfix_expr.operator.kind {
+                        ASTUnaryOperatorKind::Increment => match value {
+                            Value::Integer(i) => Value::Integer(i + 1),
+                            Value::Float(f) => Value::Float(f + 1.0),
+                            _ => {
+                                self.add_error(format!("Cannot increment {:?}", value.get_type()));
+                                return;
+                            }
+                        },
+                        ASTUnaryOperatorKind::Decrement => match value {
+                            Value::Integer(i) => Value::Integer(i - 1),
+                            Value::Float(f) => Value::Float(f - 1.0),
+                            _ => {
+                                self.add_error(format!("Cannot decrement {:?}", value.get_type()));
+                                return;
+                            }
+                        },
+                        _ => {
+                            self.add_error("Invalid postfix operator".to_string());
+                            return;
+                        }
+                    };
+                    // Assign the new value but return the old value (standard postfix semantics)
+                    if let Err(e) = self.symbol_table.assign(name, new_value) {
+                        self.add_error(e);
+                        return;
+                    }
+                    self.last_value = Some(old_value);
+                }
+                Err(e) => {
+                    self.add_error(e);
+                    return;
+                }
+            }
+        } else {
+            self.add_error("Postfix Increment/Decrement can only be applied to variables".to_string());
+            return;
+        }
     }
 
     fn visit_identifier(&mut self, ident: &ASTIdentifierExpression) {

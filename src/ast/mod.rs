@@ -88,6 +88,9 @@ pub trait ASTVisitor {
             ASTExpressionKind::Unary(unary_expr) => {
                 self.visit_unary_expression(unary_expr);
             }
+            ASTExpressionKind::PostfixUnary(postfix_expr) => {
+                self.visit_postfix_unary_expression(postfix_expr);
+            }
             ASTExpressionKind::Identifier(ident) => {
                 self.visit_identifier(ident);
             }
@@ -119,6 +122,11 @@ pub trait ASTVisitor {
     /// Called for unary expressions (`-x`, `!x`). Default visits the operand.
     fn visit_unary_expression(&mut self, unary_expr: &ASTUnaryExpression) {
         self.do_visit_expression(&unary_expr.operand);
+    }
+
+    /// Called for postfix unary expressions (`x++`, `x--`). Default visits the operand.
+    fn visit_postfix_unary_expression(&mut self, postfix_expr: &ASTPostfixUnaryExpression) {
+        self.do_visit_expression(&postfix_expr.operand);
     }
 
     /// Called for identifier references. Default is a no-op.
@@ -193,6 +201,14 @@ impl ASTVisitor for ASTPrintor {
         self.indent += LEVEL_INDENT;
         self.print_with_indent(&format!("Operator: {:?}", unary_expr.operator.kind));
         self.visit_expression(&unary_expr.operand);
+        self.indent -= LEVEL_INDENT;
+    }
+
+    fn visit_postfix_unary_expression(&mut self, postfix_expr: &ASTPostfixUnaryExpression) {
+        self.print_with_indent("Postfix Unary Expression");
+        self.indent += LEVEL_INDENT;
+        self.visit_expression(&postfix_expr.operand);
+        self.print_with_indent(&format!("Operator: {:?}", postfix_expr.operator.kind));
         self.indent -= LEVEL_INDENT;
     }
 
@@ -273,6 +289,7 @@ pub enum ASTExpressionKind {
     Binary(ASTBinaryExpression),   
     Paranthesized(ASTParanthesizedExpression),
     Unary(ASTUnaryExpression),
+    PostfixUnary(ASTPostfixUnaryExpression),
     Identifier(ASTIdentifierExpression),
     FunctionCall(ASTFunctionCallExpression),
 }
@@ -348,6 +365,8 @@ pub enum ASTUnaryOperatorKind {
     Plus,
     Minus,
     LogicalNot,
+    Increment,
+    Decrement,
 }
 
 /// A literal value node (integer, float, boolean, or string).
@@ -364,6 +383,12 @@ pub struct ASTParanthesizedExpression {
 pub struct ASTUnaryExpression {
     operator: ASTUnaryOperator,
     operand: Box<ASTExpression>,
+}
+
+/// A postfix unary expression: `operand operator` (for ++ and --).
+pub struct ASTPostfixUnaryExpression {
+    operand: Box<ASTExpression>,
+    operator: ASTUnaryOperator,
 }
 
 pub struct ASTUnaryOperator {
@@ -419,6 +444,10 @@ impl ASTExpression {
 
     pub fn unary(operator: ASTUnaryOperator, operand: ASTExpression) -> Self {
         ASTExpression::new(ASTExpressionKind::Unary(ASTUnaryExpression { operator, operand: Box::new(operand) }))
+    }
+
+    pub fn postfix_unary(operand: ASTExpression, operator: ASTUnaryOperator) -> Self {
+        ASTExpression::new(ASTExpressionKind::PostfixUnary(ASTPostfixUnaryExpression { operand: Box::new(operand), operator }))
     }
 
     pub fn identifier(name: String) -> Self {
