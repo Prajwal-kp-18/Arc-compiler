@@ -11,8 +11,7 @@ A compiler for a custom expression language built in Rust, supporting variables,
 
 - **Variables**: `let x = 10` (mutable), `const PI = 3.14` (immutable)
 - **Assignment**: `x = x + 5` with mutability and type checking
-- **Built-in functions**: `print(x)`, `print("Hello", "World")`
- - **Built-in functions**: `print(x)`, `min(a, b, ...)`, `max(a, b, ...)` (numeric comparisons)
+- **Built-in functions**: `print(x)`, `min(a, b, ...)`, `max(a, b, ...)` (numeric comparisons)
 - **Comments**: Single-line `//` and multi-line `/* */`
 
 ### Types
