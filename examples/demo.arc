@@ -1,73 +1,111 @@
 // Arc Compiler Demo Program
-// This file demonstrates the key features of the Arc language
+// This file demonstrates the supported features of the Arc language.
 
-// Variable declarations
+print("=== Arc Compiler Demo ===")
+print("This demo walks through the features currently supported by Arc.")
+
+// Variables and constants
+print("")
+print("1) Variables and constants")
 let x = 10
 let y = 20
 const PI = 3.14159
+print("x is a mutable integer:", x)
+print("y is another mutable integer:", y)
+print("PI is an immutable constant:", PI)
 
-// Print basic values
-print("=== Arc Compiler Demo ===")
-print("Variables:")
-print(x)
-print(y)
-print(PI)
-
-// Arithmetic operations
+// Arithmetic
+print("")
+print("2) Arithmetic and precedence")
 let sum = x + y
-print("sum: " + sum)
-
 let product = x * y
-print("product: " + product)
+let complex_math = (x + y) * 2 - 10
+print("x + y =", sum)
+print("x * y =", product)
+print("(x + y) * 2 - 10 =", complex_math)
 
 // Type coercion
+print("")
+print("3) Type coercion")
 let mixed = x + PI
-print(mixed)
+print("x + PI automatically becomes a float:", mixed)
 
-// Boolean operations
-let isGreater = x > 5
-print("isGreater: " + isGreater)
+// Comparisons and logical operators
+print("")
+print("4) Comparisons and logical operators")
+let is_greater = x > 5
+let in_range = x < 20 && y > 10
+let out_of_range = x < 5 || y > 10
+print("x > 5:", is_greater)
+print("x < 20 && y > 10:", in_range)
+print("x < 5 || y > 10:", out_of_range)
 
-let result = x < 20 && y > 10
-print(result)
-
-// Comments are ignored
-// This is a single-line comment
-
-// String variables
+// Strings
+print("")
+print("5) Strings")
 let greeting = "Hello"
-let name = "Arc"
-print(greeting)
-print(name)
+let language = "Arc"
+print("Greeting:", greeting)
+print("Language name:", language)
 
-// Complex expressions
-let calculation = (x + y) * 2 - 10
-print(calculation)
+// Bitwise operators
+print("")
+print("6) Bitwise operators")
+let bitwise_and = x & 7
+let bitwise_or = x | 3
+let bitwise_xor = x ^ 6
+let shifted_left = x << 1
+let shifted_right = y >> 1
+print("x & 7 =", bitwise_and)
+print("x | 3 =", bitwise_or)
+print("x ^ 6 =", bitwise_xor)
+print("x << 1 =", shifted_left)
+print("y >> 1 =", shifted_right)
 
-// Mutable variables can be reassigned
-x = x + 5
-print(x)
+// Unary operators
+print("")
+print("7) Unary operators")
+let unary_sample = -x
+let positive_sample = +y
+print("-x =", unary_sample)
+print("+y =", positive_sample)
 
-// Const variables cannot be reassigned (this would cause an error)
-// PI = 3.14  // Uncommenting this will cause an error
+// Prefix and postfix increment/decrement
+print("")
+print("8) Prefix and postfix increment/decrement")
+let counter = 10
+print("counter starts at:", counter)
+print("++counter returns the incremented value:", ++counter)
+print("counter after prefix increment:", counter)
+print("counter++ returns the old value:", counter++)
+print("counter after postfix increment:", counter)
+print("--counter returns the decremented value:", --counter)
+print("counter-- returns the old value:", counter--)
+print("counter at the end:", counter)
 
-// Increment and Decrement
-print("let abc = 10")
-let abc = 10
-abc++
-print("Value of abc after incrementing: ", abc)
-abc--
-print("Value of abc after decrementing: ", abc)
+// Function calls
+print("")
+print("9) Built-in functions")
+print("min(4, 2, 9, 1) =", min(4, 2, 9, 1))
+print("max(4, 2, 9, 1) =", max(4, 2, 9, 1))
 
-print("If statement")
-let agag = 10
-print("agag is: ", agag)
-if agag == 10 {
-    print("agag is 10 so letse implement by 10 and print")
-    agag = agag+10
+// Assignment and if/else blocks
+print("")
+print("10) Assignment and if/else blocks")
+let score = 10
+print("score before the if statement:", score)
+if score == 10 {
+    print("The condition 'score == 10' is true.")
+    print("Inside the then-branch we add 5 to score.")
+    score = score + 5
 } else {
-    print("agag is not 10")
+    print("The condition 'score == 10' is false.")
 }
-print("new agag: ", agag)
+print("score after the if statement:", score)
 
+// Comments are ignored by the lexer.
+// Single-line comments are fine.
+/* Multi-line comments are also supported. */
+
+print("")
 print("=== Demo Complete ===")
