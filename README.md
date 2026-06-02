@@ -20,16 +20,16 @@ A compiler for a custom expression language built in Rust, supporting variables,
 - `Integer`, `Float`, `Boolean`, `String`
 - Automatic `int → float` coercion where applicable
 
-### Operators
+## Operators
 
-| Category   | Operators                          |
-|------------|------------------------------------|
-| Arithmetic | `+`, `-`, `*`, `/`, `%`, `**`      |
-| Bitwise    | `&`, `|`, `^`, `<<`, `>>`          |
-| Comparison | `==`, `!=`, `<`, `>`, `<=`, `>=`   |
-| Logical    | `&&`, `||`, `!`                    |
-| Unary      | `-x`, `+x`, `!x`, `++x`, `--x` (prefix) |
-| Postfix    | `x++`, `x--` (postfix)             |
+| Group | Operators |
+|--------|----------|
+| Arithmetic | `+` `-` `*` `/` `%` `**` |
+| Bitwise | `&` `\|` `^` `<<` `>>` |
+| Comparison | `==` `!=` `<` `>` `<=` `>=` |
+| Logical | `&&` `\|\|` `!` |
+| Unary Prefix | `+` `-` `!` `++` `--` |
+| Postfix | `++` `--` |
 
 **Operator Precedence** (11 levels, lowest to highest):
 1. Logical OR (`||`)
