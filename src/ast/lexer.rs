@@ -71,6 +71,9 @@ pub enum TokenKind {
     EOF,
     Whitespace,
     Identifier(String),
+    // Conditional
+    IF,
+    ELSE
 }  
 
 /// The byte range and original text of a token in the source.
@@ -403,7 +406,7 @@ impl<'o> Lexer<'o> {
 
     /// Parses an identifier or keyword.
     ///
-    /// Matches `true`, `false`, `let`, and `const` as keyword tokens;
+    /// Matches `true`, `false`, `let`, `const`, `if`, `else` as keyword tokens;
     /// everything else becomes [`TokenKind::Identifier`].
     pub fn consume_identifier(&mut self) -> TokenKind {
         let mut identifier = String::new();
@@ -423,6 +426,8 @@ impl<'o> Lexer<'o> {
             "false" => TokenKind::Boolean(false),
             "let" => TokenKind::Let,
             "const" => TokenKind::Const,
+            "if" => TokenKind::IF,
+            "else" => TokenKind::ELSE,
             _ => TokenKind::Identifier(identifier), // User-defined name
         }
     }

@@ -70,6 +70,7 @@ pub trait ASTVisitor {
             ASTStatementKind::Expression(expr) => self.visit_expression(expr),
             ASTStatementKind::VariableDeclaration(decl) => self.visit_variable_declaration(decl),
             ASTStatementKind::Assignment(assign) => self.visit_assignment(assign),
+            ASTStatementKind::IfStatement(if_stmt) => self.visit_if_statement(if_stmt),
         }
     }
     fn visit_statement(&mut self, statement: &ASTStatement){
@@ -149,6 +150,18 @@ pub trait ASTVisitor {
     /// Called for assignment statements. Default visits the right-hand side.
     fn visit_assignment(&mut self, assign: &ASTAssignment) {
         self.visit_expression(&assign.value);
+    }
+
+    fn visit_if_statement(&mut self, if_stmt: &ASTIfStatement) {
+        self.visit_expression(&if_stmt.condition);
+        for stmt in &if_stmt.then_branch {
+            self.visit_statement(stmt);
+        }
+        if let Some(else_branch) = &if_stmt.else_branch {
+            for stmt in else_branch {
+                self.visit_statement(stmt);
+            }
+        }
     }
 }
 
@@ -251,6 +264,7 @@ pub enum  ASTStatementKind{
     Expression(ASTExpression),
     VariableDeclaration(ASTVariableDeclaration),
     Assignment(ASTAssignment),
+    IfStatement(ASTIfStatement),
 }
 
 /// A top-level statement node.
@@ -276,6 +290,32 @@ impl ASTStatement {
     /// Wraps an assignment as a statement.
     pub fn assignment(assign: ASTAssignment) -> Self {
         ASTStatement::new(ASTStatementKind::Assignment(assign))
+    }
+
+    /// Wraps an if statement as a statement.
+    pub fn if_statement(if_stmt: ASTIfStatement) -> Self {
+        ASTStatement::new(ASTStatementKind::IfStatement(if_stmt))
+    }
+}
+
+/// An `if` statement with optional `else`.
+pub struct ASTIfStatement {
+    pub condition: Box<ASTExpression>,
+    pub then_branch: Vec<ASTStatement>,
+    pub else_branch: Option<Vec<ASTStatement>>,
+}
+
+impl ASTIfStatement {
+    pub fn new(
+        condition: ASTExpression,
+        then_branch: Vec<ASTStatement>,
+        else_branch: Option<Vec<ASTStatement>>,
+    ) -> Self {
+        Self {
+            condition: Box::new(condition),
+            then_branch,
+            else_branch,
+        }
     }
 }
 

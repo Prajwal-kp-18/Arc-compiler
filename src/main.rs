@@ -2,11 +2,11 @@
 
 mod ast;
 use ast::lexer::Token;
+use ast::lexer::TokenKind;
 use ast::Ast;
 use ast::parser::Parser;
 use ast::evaluator::ASTEvaluator;
-use ast::ASTVisitor;
-use std::io::{self, Write, BufRead};
+use std::io::{self, Write};
 use std::env;
 use std::fs;
 
@@ -24,7 +24,7 @@ fn main() {
     }
 }
 
-/// Reads and executes Arc source file line by line
+/// Reads and executes Arc source file as a complete program
 fn execute_file(filename: &str) {
     let contents = match fs::read_to_string(filename) {
         Ok(c) => c,
@@ -36,29 +36,8 @@ fn execute_file(filename: &str) {
     
     println!("=== Executing {} ===", filename);
     let mut evaluator = ASTEvaluator::new();
-    
-    for (line_num, line) in contents.lines().enumerate() {
-        let line = line.trim();
-        
-        // Skip empty lines and comments
-        if line.is_empty() || line.starts_with("//") {
-            continue;
-        }
-        
-        execute_line(line, &mut evaluator, line_num + 1);
-    }
-    
-    if !evaluator.errors.is_empty() {
-        println!("\n=== Errors ===");
-        for error in &evaluator.errors {
-            eprintln!("{}", error);
-        }
-    }
-}
 
-/// Tokenizes, parses, and evaluates a single line of code
-fn execute_line(input: &str, evaluator: &mut ASTEvaluator, line_num: usize) {
-    let mut lexer = ast::lexer::Lexer::new(input);
+    let mut lexer = ast::lexer::Lexer::new(&contents);
     let mut tokens: Vec<Token> = Vec::new();
     while let Some(token) = lexer.next_token() {
         tokens.push(token);
@@ -66,22 +45,28 @@ fn execute_line(input: &str, evaluator: &mut ASTEvaluator, line_num: usize) {
 
     let mut ast: Ast = Ast::new();
     let mut parser = Parser::new(tokens);
-    
-    match parser.next_statement() {
-        Some(statement) => {
-            ast.add_statement(statement);
-            let error_count_before = evaluator.errors.len();
-            ast.visit(evaluator);
-            let error_count_after = evaluator.errors.len();
-            
-            if error_count_after > error_count_before {
-                eprintln!("Line {}: Error occurred", line_num);
+
+    loop {
+        match parser.current().map(|token| &token.kind) {
+            Some(TokenKind::EOF) | None => break,
+            _ => {}
+        }
+
+        match parser.next_statement() {
+            Some(statement) => ast.add_statement(statement),
+            None => {
+                eprintln!("Parse error: Invalid syntax in file '{}'.", filename);
+                return;
             }
         }
-        None => {
-            if !input.is_empty() {
-                eprintln!("Line {}: Parse error", line_num);
-            }
+    }
+
+    ast.visit(&mut evaluator);
+    
+    if !evaluator.errors.is_empty() {
+        println!("\n=== Errors ===");
+        for error in &evaluator.errors {
+            eprintln!("{}", error);
         }
     }
 }

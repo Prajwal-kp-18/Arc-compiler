@@ -13,7 +13,7 @@
 //! `&&` and `||` skip the right operand when the result is determined by the
 //! left operand alone, matching standard boolean semantics.
 
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement};
 use crate::ast::types::Value;
 use crate::ast::symbol_table::SymbolTable;
 
@@ -536,6 +536,30 @@ impl ASTVisitor for ASTEvaluator {
                 self.add_error(format!("Failed to evaluate value for assignment to '{}'", assign.name));
             }
         }
+    }
+
+    fn visit_if_statement(&mut self, if_stmt: &ASTIfStatement) {
+        self.visit_expression(&if_stmt.condition);
+
+        let condition = match &self.last_value {
+            Some(value) => value.to_boolean(),
+            None => {
+                self.add_error("Failed to evaluate if condition".to_string());
+                return;
+            }
+        };
+
+        if condition {
+            for stmt in &if_stmt.then_branch {
+                self.visit_statement(stmt);
+            }
+        } else if let Some(else_branch) = &if_stmt.else_branch {
+            for stmt in else_branch {
+                self.visit_statement(stmt);
+            }
+        }
+
+        self.last_value = None;
     }
 
     /// Dispatches to built-in function implementations.

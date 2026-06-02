@@ -32,7 +32,7 @@ use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
 use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
-use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTFunctionCallExpression};
+use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement};
 use crate::ast::lexer::TokenKind;
 
 /// Parses a token stream into an AST.
@@ -85,7 +85,12 @@ impl Parser {
         if matches!(token.kind, TokenKind::Let | TokenKind::Const) {
             return self.parse_variable_declaration();
         }
-        
+
+        // Check for if statement
+        if token.kind == TokenKind::IF {
+            return self.parse_if_statement();
+        }
+
         // Check for assignment - needs lookahead to distinguish from identifier expression
         if let TokenKind::Identifier(_) = token.kind {
             if self.peek(1).map(|t| &t.kind) == Some(&TokenKind::Equal) {
@@ -102,6 +107,41 @@ impl Parser {
         }
         
         return Some(ASTStatement::expression(expr));
+    }
+
+    /// Parses an `if` statement.
+    pub fn parse_if_statement(&mut self) -> Option<ASTStatement> {
+        self.consume(); // Consume the 'if' token
+        let condition = self.parse_expression()?;
+        let then_branch = self.parse_block()?;
+        let else_branch = if self.current().map(|t| &t.kind) == Some(&TokenKind::ELSE) {
+            self.consume(); // Consume the 'else' token
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        Some(ASTStatement::if_statement(ASTIfStatement::new(condition, then_branch, else_branch)))
+    }
+
+    pub fn parse_block(&mut self) -> Option<Vec<ASTStatement>> {
+        if self.consume()?.kind != TokenKind::LeftBrace {
+            return None;
+        }
+
+        let mut statements = Vec::new();
+
+        while self.current().map(|t| &t.kind) != Some(&TokenKind::RightBrace) {
+            if self.current().is_none() {
+                eprintln!("Unclosed block");
+                return None;
+            }
+
+            let stmt = self.parse_statement()?;
+            statements.push(stmt);
+        }
+
+        self.consume(); // consume RightBrace
+        Some(statements)
     }
 
     /// Parses `let <name> = <expr>` or `const <name> = <expr>`.

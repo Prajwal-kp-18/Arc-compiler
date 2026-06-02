@@ -59,4 +59,13 @@ print("Value of abc after incrementing: ", abc)
 abc--
 print("Value of abc after decrementing: ", abc)
 
+print("If statement")
+let agag = 10
+print(agag)
+if agag == 10 {
+    print("agag is 10")
+} else {
+    print("agag is not 10")
+}
+
 print("=== Demo Complete ===")
