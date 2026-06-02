@@ -61,11 +61,13 @@ print("Value of abc after decrementing: ", abc)
 
 print("If statement")
 let agag = 10
-print(agag)
+print("agag is: ", agag)
 if agag == 10 {
-    print("agag is 10")
+    print("agag is 10 so letse implement by 10 and print")
+    agag = agag+10
 } else {
     print("agag is not 10")
 }
+print("new agag: ", agag)
 
 print("=== Demo Complete ===")
