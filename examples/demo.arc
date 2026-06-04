@@ -98,10 +98,13 @@ if score == 10 {
     print("The condition 'score == 10' is true.")
     print("Inside the then-branch we add 5 to score.")
     score = score + 5
+    print("lets define a variable apap to check the scope")
+    let apap = 10
 } else {
     print("The condition 'score == 10' is false.")
 }
 print("score after the if statement:", score)
+print("apap", apap)
 
 // Comments are ignored by the lexer.
 // Single-line comments are fine.

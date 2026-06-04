@@ -550,12 +550,20 @@ impl ASTVisitor for ASTEvaluator {
         };
 
         if condition {
+            self.symbol_table.enter_scope();
             for stmt in &if_stmt.then_branch {
                 self.visit_statement(stmt);
             }
+            if let Err(e) = self.symbol_table.exit_scope() {
+                self.add_error(e);
+            }
         } else if let Some(else_branch) = &if_stmt.else_branch {
+            self.symbol_table.enter_scope();
             for stmt in else_branch {
                 self.visit_statement(stmt);
+            }
+            if let Err(e) = self.symbol_table.exit_scope() {
+                self.add_error(e);
             }
         }
 
