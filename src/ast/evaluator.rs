@@ -13,9 +13,29 @@
 //! `&&` and `||` skip the right operand when the result is determined by the
 //! left operand alone, matching standard boolean semantics.
 
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement, ASTStatement};
 use crate::ast::types::Value;
 use crate::ast::symbol_table::SymbolTable;
+use std::collections::HashMap;
+
+#[derive(Clone)]
+struct UserFunction {
+    name: String,
+    parameters: Vec<String>,
+    body: Vec<ASTStatement>,
+    closure: SymbolTable,
+}
+
+#[derive(Clone)]
+struct FunctionScope {
+    functions: HashMap<String, UserFunction>,
+}
+
+impl FunctionScope {
+    fn new() -> Self {
+        Self { functions: HashMap::new() }
+    }
+}
 
 /// Evaluates an Arc AST, maintaining interpreter state across statements.
 ///
@@ -30,6 +50,9 @@ pub struct ASTEvaluator {
     pub errors: Vec<String>,
     /// Variable storage for the current execution context.
     pub symbol_table: SymbolTable,
+    function_scopes: Vec<FunctionScope>,
+    call_stack: Vec<String>,
+    return_value: Option<Value>,
 }
 
 impl ASTEvaluator {
@@ -39,11 +62,97 @@ impl ASTEvaluator {
             last_value: None,
             errors: Vec::new(),
             symbol_table: SymbolTable::new(),
+            function_scopes: vec![FunctionScope::new()],
+            call_stack: Vec::new(),
+            return_value: None,
         }
     }
 
     fn add_error(&mut self, error: String) {
         self.errors.push(error);
+    }
+
+    fn enter_lexical_scope(&mut self) {
+        self.symbol_table.enter_scope();
+        self.function_scopes.push(FunctionScope::new());
+    }
+
+    fn exit_lexical_scope(&mut self) -> Result<(), String> {
+        self.function_scopes.pop().ok_or_else(|| "Cannot exit function scope".to_string())?;
+        self.symbol_table.exit_scope()
+    }
+
+    fn define_user_function(&mut self, function: UserFunction) -> Result<(), String> {
+        let current_scope = self.function_scopes.last_mut().ok_or_else(|| "No active function scope".to_string())?;
+        if current_scope.functions.contains_key(&function.name) {
+            return Err(format!("Function '{}' already declared in this scope", function.name));
+        }
+        current_scope.functions.insert(function.name.clone(), function);
+        Ok(())
+    }
+
+    fn lookup_user_function(&self, name: &str) -> Option<UserFunction> {
+        for scope in self.function_scopes.iter().rev() {
+            if let Some(function) = scope.functions.get(name) {
+                return Some(function.clone());
+            }
+        }
+        None
+    }
+
+    fn execute_statements(&mut self, statements: &[ASTStatement]) {
+        for statement in statements {
+            self.visit_statement(statement);
+            if self.return_value.is_some() {
+                break;
+            }
+        }
+    }
+
+    fn call_user_function(&mut self, function: UserFunction, argument_values: Vec<Value>) {
+        if argument_values.len() != function.parameters.len() {
+            self.add_error(format!(
+                "Function '{}' expected {} arguments but got {}",
+                function.name,
+                function.parameters.len(),
+                argument_values.len()
+            ));
+            self.last_value = None;
+            return;
+        }
+
+        let saved_symbol_table = std::mem::replace(&mut self.symbol_table, function.closure.clone());
+        let saved_last_value = self.last_value.clone();
+        let saved_return_value = self.return_value.clone();
+        self.call_stack.push(function.name.clone());
+
+        self.enter_lexical_scope();
+        for (parameter, argument) in function.parameters.iter().zip(argument_values.into_iter()) {
+            if let Err(error) = self.symbol_table.define(parameter.clone(), argument, true) {
+                self.add_error(error);
+                let _ = self.exit_lexical_scope();
+                self.call_stack.pop();
+                self.symbol_table = saved_symbol_table;
+                self.last_value = saved_last_value;
+                self.return_value = saved_return_value;
+                return;
+            }
+        }
+
+        self.return_value = None;
+        self.execute_statements(&function.body);
+        let result = self.return_value.take().or_else(|| self.last_value.clone());
+
+        if let Err(error) = self.exit_lexical_scope() {
+            self.add_error(error);
+        }
+
+        self.call_stack.pop();
+        self.symbol_table = saved_symbol_table;
+        self.last_value = saved_last_value;
+        self.return_value = saved_return_value;
+
+        self.last_value = result;
     }
 }
 
@@ -522,6 +631,39 @@ impl ASTVisitor for ASTEvaluator {
         }
     }
 
+    fn visit_function_declaration(&mut self, func: &ASTFunctionDeclaration) {
+        let function = UserFunction {
+            name: func.name.clone(),
+            parameters: func.parameters.clone(),
+            body: func.body.clone(),
+            closure: self.symbol_table.clone(),
+        };
+
+        if let Err(error) = self.define_user_function(function) {
+            self.add_error(error);
+        }
+
+        self.last_value = None;
+    }
+
+    fn visit_return_statement(&mut self, ret: &ASTReturnStatement) {
+        if self.call_stack.is_empty() {
+            self.add_error("'return' can only be used inside a function".to_string());
+            self.last_value = None;
+            return;
+        }
+
+        self.visit_expression(&ret.value);
+        match &self.last_value {
+            Some(value) => {
+                self.return_value = Some(value.clone());
+            }
+            None => {
+                self.add_error("Failed to evaluate return value".to_string());
+            }
+        }
+    }
+
     fn visit_assignment(&mut self, assign: &ASTAssignment) {
         // Evaluate the value expression
         self.visit_expression(&assign.value);
@@ -550,19 +692,15 @@ impl ASTVisitor for ASTEvaluator {
         };
 
         if condition {
-            self.symbol_table.enter_scope();
-            for stmt in &if_stmt.then_branch {
-                self.visit_statement(stmt);
-            }
-            if let Err(e) = self.symbol_table.exit_scope() {
+            self.enter_lexical_scope();
+            self.execute_statements(&if_stmt.then_branch);
+            if let Err(e) = self.exit_lexical_scope() {
                 self.add_error(e);
             }
         } else if let Some(else_branch) = &if_stmt.else_branch {
-            self.symbol_table.enter_scope();
-            for stmt in else_branch {
-                self.visit_statement(stmt);
-            }
-            if let Err(e) = self.symbol_table.exit_scope() {
+            self.enter_lexical_scope();
+            self.execute_statements(else_branch);
+            if let Err(e) = self.exit_lexical_scope() {
                 self.add_error(e);
             }
         }
@@ -575,19 +713,27 @@ impl ASTVisitor for ASTEvaluator {
     /// Currently `print`, `max`, and `min` are supported. Unknown function names are reported
     /// as errors via [`ASTEvaluator::errors`].
     fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
+        let mut argument_values = Vec::new();
+        for arg in &func_call.arguments {
+            self.visit_expression(arg);
+            if let Some(value) = &self.last_value {
+                argument_values.push(value.clone());
+            } else {
+                self.add_error(format!("Failed to evaluate argument to '{}'", func_call.name));
+                self.last_value = None;
+                return;
+            }
+        }
+
+        if let Some(function) = self.lookup_user_function(&func_call.name) {
+            self.call_user_function(function, argument_values);
+            return;
+        }
+
         match func_call.name.as_str() {
             "print" => {
-                // Evaluate all arguments and print them
-                let mut values = Vec::new();
-                for arg in &func_call.arguments {
-                    self.visit_expression(arg);
-                    if let Some(value) = &self.last_value {
-                        values.push(value.clone());
-                    }
-                }
-                
                 // Print the values
-                for (i, value) in values.iter().enumerate() {
+                for (i, value) in argument_values.iter().enumerate() {
                     if i > 0 {
                         print!(" ");
                     }
@@ -604,28 +750,15 @@ impl ASTVisitor for ASTEvaluator {
                 self.last_value = None;
             }
             "max" => {
-                // Evaluate all arguments
-                let mut values: Vec<Value> = Vec::new();
-                for arg in &func_call.arguments {
-                    self.visit_expression(arg);
-                    if let Some(v) = &self.last_value {
-                        values.push(v.clone());
-                    } else {
-                        self.add_error("Failed to evaluate argument to max()".to_string());
-                        self.last_value = None;
-                        return;
-                    }
-                }
-
-                if values.is_empty() {
+                if argument_values.is_empty() {
                     self.add_error("max() requires at least one argument".to_string());
                     self.last_value = None;
                     return;
                 }
 
                 // Reduce using compare
-                let mut current = values.remove(0);
-                for v in values {
+                let mut current = argument_values[0].clone();
+                for v in argument_values.into_iter().skip(1) {
                     match current.compare(&v) {
                         Ok(std::cmp::Ordering::Less) => current = v,
                         Ok(_) => (),
@@ -640,28 +773,15 @@ impl ASTVisitor for ASTEvaluator {
                 self.last_value = Some(current);
             }
             "min" => {
-                // Evaluate all arguments
-                let mut values: Vec<Value> = Vec::new();
-                for arg in &func_call.arguments {
-                    self.visit_expression(arg);
-                    if let Some(v) = &self.last_value {
-                        values.push(v.clone());
-                    } else {
-                        self.add_error("Failed to evaluate argument to min()".to_string());
-                        self.last_value = None;
-                        return;
-                    }
-                }
-
-                if values.is_empty() {
+                if argument_values.is_empty() {
                     self.add_error("min() requires at least one argument".to_string());
                     self.last_value = None;
                     return;
                 }
 
                 // Reduce using compare
-                let mut current = values.remove(0);
-                for v in values {
+                let mut current = argument_values[0].clone();
+                for v in argument_values.into_iter().skip(1) {
                     match current.compare(&v) {
                         Ok(std::cmp::Ordering::Greater) => current = v,
                         Ok(_) => (),

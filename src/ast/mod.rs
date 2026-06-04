@@ -71,6 +71,8 @@ pub trait ASTVisitor {
             ASTStatementKind::VariableDeclaration(decl) => self.visit_variable_declaration(decl),
             ASTStatementKind::Assignment(assign) => self.visit_assignment(assign),
             ASTStatementKind::IfStatement(if_stmt) => self.visit_if_statement(if_stmt),
+            ASTStatementKind::FunctionDeclaration(func) => self.visit_function_declaration(func),
+            ASTStatementKind::ReturnStatement(ret) => self.visit_return_statement(ret),
         }
     }
     fn visit_statement(&mut self, statement: &ASTStatement){
@@ -145,6 +147,18 @@ pub trait ASTVisitor {
     /// Called for `let` / `const` declarations. Default visits the initializer.
     fn visit_variable_declaration(&mut self, decl: &ASTVariableDeclaration) {
         self.visit_expression(&decl.initializer);
+    }
+
+    /// Called for function declarations. Default visits the body statements.
+    fn visit_function_declaration(&mut self, func: &ASTFunctionDeclaration) {
+        for stmt in &func.body {
+            self.visit_statement(stmt);
+        }
+    }
+
+    /// Called for return statements. Default visits the returned expression.
+    fn visit_return_statement(&mut self, ret: &ASTReturnStatement) {
+        self.visit_expression(&ret.value);
     }
 
     /// Called for assignment statements. Default visits the right-hand side.
@@ -259,15 +273,19 @@ impl ASTPrintor {
 // Statement types
 // ---------------------------------------------------------------------------
  
-/// Discriminates between the three statement forms in Arc.
+/// Discriminates between the statement forms in Arc.
+#[derive(Clone)]
 pub enum  ASTStatementKind{
     Expression(ASTExpression),
     VariableDeclaration(ASTVariableDeclaration),
     Assignment(ASTAssignment),
     IfStatement(ASTIfStatement),
+    FunctionDeclaration(ASTFunctionDeclaration),
+    ReturnStatement(ASTReturnStatement),
 }
 
 /// A top-level statement node.
+#[derive(Clone)]
 pub struct ASTStatement {
     pub kind: ASTStatementKind,
 } 
@@ -296,9 +314,20 @@ impl ASTStatement {
     pub fn if_statement(if_stmt: ASTIfStatement) -> Self {
         ASTStatement::new(ASTStatementKind::IfStatement(if_stmt))
     }
+
+    /// Wraps a function declaration as a statement.
+    pub fn function_declaration(func: ASTFunctionDeclaration) -> Self {
+        ASTStatement::new(ASTStatementKind::FunctionDeclaration(func))
+    }
+
+    /// Wraps a return statement as a statement.
+    pub fn return_statement(ret: ASTReturnStatement) -> Self {
+        ASTStatement::new(ASTStatementKind::ReturnStatement(ret))
+    }
 }
 
 /// An `if` statement with optional `else`.
+#[derive(Clone)]
 pub struct ASTIfStatement {
     pub condition: Box<ASTExpression>,
     pub then_branch: Vec<ASTStatement>,
@@ -319,11 +348,38 @@ impl ASTIfStatement {
     }
 }
 
+/// A function declaration statement.
+#[derive(Clone)]
+pub struct ASTFunctionDeclaration {
+    pub name: String,
+    pub parameters: Vec<String>,
+    pub body: Vec<ASTStatement>,
+}
+
+impl ASTFunctionDeclaration {
+    pub fn new(name: String, parameters: Vec<String>, body: Vec<ASTStatement>) -> Self {
+        Self { name, parameters, body }
+    }
+}
+
+/// A return statement.
+#[derive(Clone)]
+pub struct ASTReturnStatement {
+    pub value: Box<ASTExpression>,
+}
+
+impl ASTReturnStatement {
+    pub fn new(value: ASTExpression) -> Self {
+        Self { value: Box::new(value) }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Expression types
 // ---------------------------------------------------------------------------
  
 /// Discriminates between the expression node types in Arc.
+#[derive(Clone)]
 pub enum ASTExpressionKind {
     Number(ASTNumberExpression),
     Binary(ASTBinaryExpression),   
@@ -335,6 +391,7 @@ pub enum ASTExpressionKind {
 }
 
 /// A binary expression node: `left operator right`.
+#[derive(Clone)]
 pub struct ASTBinaryExpression {
     left: Box<ASTExpression>,
     operator: ASTBinaryOperator,
@@ -342,6 +399,7 @@ pub struct ASTBinaryExpression {
 }
 
 /// A binary operator with its kind and the originating token.
+#[derive(Clone)]
 pub struct ASTBinaryOperator {
     pub kind: ASTBinaryOperatorKind,
     pub token: Token,
@@ -374,7 +432,7 @@ impl ASTBinaryOperator {
 }
 
 /// All binary operators supported by Arc.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASTBinaryOperatorKind {
     Plus,
     Minus,
@@ -400,7 +458,7 @@ pub enum ASTBinaryOperatorKind {
 }
 
 /// Unary operator kinds supported by Arc.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ASTUnaryOperatorKind {
     Plus,
     Minus,
@@ -410,27 +468,32 @@ pub enum ASTUnaryOperatorKind {
 }
 
 /// A literal value node (integer, float, boolean, or string).
+#[derive(Clone)]
 pub struct ASTNumberExpression {
     pub value: Value,
 }
 
 /// A parenthesized sub-expression: `( expr )`.
+#[derive(Clone)]
 pub struct ASTParanthesizedExpression {
     expression: Box<ASTExpression>,
 }
 
 /// A unary expression: `operator operand`.
+#[derive(Clone)]
 pub struct ASTUnaryExpression {
     operator: ASTUnaryOperator,
     operand: Box<ASTExpression>,
 }
 
 /// A postfix unary expression: `operand operator` (for ++ and --).
+#[derive(Clone)]
 pub struct ASTPostfixUnaryExpression {
     operand: Box<ASTExpression>,
     operator: ASTUnaryOperator,
 }
 
+#[derive(Clone)]
 pub struct ASTUnaryOperator {
     pub kind: ASTUnaryOperatorKind,
     pub token: Token,
@@ -444,6 +507,7 @@ impl ASTUnaryOperator {
 
 
 /// An expression node.
+#[derive(Clone)]
 pub struct ASTExpression {
     kind: ASTExpressionKind,
 }
@@ -504,6 +568,7 @@ impl ASTExpression {
 // ---------------------------------------------------------------------------
  
 /// A `let` or `const` variable declaration.
+#[derive(Clone)]
 pub struct ASTVariableDeclaration {
     /// The variable name.
     pub name: String,
@@ -524,6 +589,7 @@ impl ASTVariableDeclaration {
 }
 
 /// An assignment statement: `name = value`.
+#[derive(Clone)]
 pub struct ASTAssignment {
     pub name: String,
     pub value: Box<ASTExpression>,
@@ -539,6 +605,7 @@ impl ASTAssignment {
 }
 
 /// A reference to a named variable.
+#[derive(Clone)]
 pub struct ASTIdentifierExpression {
     pub name: String,
 }
@@ -550,6 +617,7 @@ impl ASTIdentifierExpression {
 }
 
 /// A function call expression: `name(arg1, arg2, ...)`.
+#[derive(Clone)]
 pub struct ASTFunctionCallExpression {
     pub name: String,
     pub arguments: Vec<ASTExpression>,

@@ -82,7 +82,7 @@ impl Scope {
 /// A lexically scoped symbol table.
 ///
 /// Maintains a stack of [`Scope`]s; the first element is always the global scope.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
     scopes: Vec<Scope>,
 }

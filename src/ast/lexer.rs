@@ -18,7 +18,7 @@
 //!
 //! - **Literals** — `Number`, `Float`, `Boolean`, `String`
 //! - **Operators** — arithmetic, bitwise, comparison, logical
-//! - **Keywords** — `let`, `const`
+//! - **Keywords** — `let`, `const`, `fn`, `return`
 //! - **Delimiters** — parentheses, braces, comma, semicolon
 //! - **Special** — `Identifier`, `EOF`, `Bad` (unrecognised character)
 //!
@@ -63,6 +63,8 @@ pub enum TokenKind {
     Equal,
     Let,
     Const,
+    Fn,
+    Return,
     Semicolon,
     // Increment and decrement operators
     PlusPlus,
@@ -426,6 +428,8 @@ impl<'o> Lexer<'o> {
             "false" => TokenKind::Boolean(false),
             "let" => TokenKind::Let,
             "const" => TokenKind::Const,
+            "fn" => TokenKind::Fn,
+            "return" => TokenKind::Return,
             "if" => TokenKind::IF,
             "else" => TokenKind::ELSE,
             _ => TokenKind::Identifier(identifier), // User-defined name

@@ -24,6 +24,8 @@
 //!
 //! [`Parser::parse_statement`] uses one token of lookahead to decide:
 //! - `let` / `const` → variable declaration
+//! - `fn` → function declaration
+//! - `return` → return statement
 //! - `identifier =` → assignment
 //! - anything else → expression statement
 
@@ -32,7 +34,7 @@ use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
 use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
-use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement};
+use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement};
 use crate::ast::lexer::TokenKind;
 
 /// Parses a token stream into an AST.
@@ -86,6 +88,14 @@ impl Parser {
             return self.parse_variable_declaration();
         }
 
+        if token.kind == TokenKind::Fn {
+            return self.parse_function_declaration();
+        }
+
+        if token.kind == TokenKind::Return {
+            return self.parse_return_statement();
+        }
+
         // Check for if statement
         if token.kind == TokenKind::IF {
             return self.parse_if_statement();
@@ -121,6 +131,65 @@ impl Parser {
             None
         };
         Some(ASTStatement::if_statement(ASTIfStatement::new(condition, then_branch, else_branch)))
+    }
+
+    /// Parses `fn name(param1, param2) { ... }`.
+    pub fn parse_function_declaration(&mut self) -> Option<ASTStatement> {
+        self.consume(); // consume `fn`
+
+        let name_token = self.consume()?;
+        let name = match &name_token.kind {
+            TokenKind::Identifier(identifier) => identifier.clone(),
+            _ => {
+                eprintln!("Expected function name after 'fn'");
+                return None;
+            }
+        };
+
+        if self.consume()?.kind != TokenKind::LeftParen {
+            eprintln!("Expected '(' after function name");
+            return None;
+        }
+
+        let mut parameters = Vec::new();
+        if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
+            loop {
+                let parameter_token = self.consume()?;
+                match &parameter_token.kind {
+                    TokenKind::Identifier(identifier) => parameters.push(identifier.clone()),
+                    _ => {
+                        eprintln!("Expected parameter name in function declaration");
+                        return None;
+                    }
+                }
+
+                if self.current().map(|t| &t.kind) == Some(&TokenKind::Comma) {
+                    self.consume();
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if self.consume()?.kind != TokenKind::RightParen {
+            eprintln!("Expected ')' after function parameters");
+            return None;
+        }
+
+        let body = self.parse_block()?;
+        Some(ASTStatement::function_declaration(ASTFunctionDeclaration::new(name, parameters, body)))
+    }
+
+    /// Parses `return <expr>`.
+    pub fn parse_return_statement(&mut self) -> Option<ASTStatement> {
+        self.consume(); // consume `return`
+
+        let value = self.parse_expression()?;
+        if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
+            self.consume();
+        }
+
+        Some(ASTStatement::return_statement(ASTReturnStatement::new(value)))
     }
 
     pub fn parse_block(&mut self) -> Option<Vec<ASTStatement>> {
