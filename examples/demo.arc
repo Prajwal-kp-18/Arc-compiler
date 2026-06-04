@@ -89,22 +89,40 @@ print("9) Built-in functions")
 print("min(4, 2, 9, 1) =", min(4, 2, 9, 1))
 print("max(4, 2, 9, 1) =", max(4, 2, 9, 1))
 
+// User-defined functions
+print("")
+print("10) User-defined functions")
+fn add(a, b) {
+    return a + b
+}
+
+fn square(n) {
+    return n * n
+}
+
+fn hypotenuse(a, b) {
+    return (a * a + b * b) ** 0.5
+}
+
+print("add(12, 8) =", add(12, 8))
+print("square(7) =", square(7))
+print("hypotenuse(6, 8) =", hypotenuse(6, 8))
+
 // Assignment and if/else blocks
 print("")
-print("10) Assignment and if/else blocks")
+print("11) Assignment and if/else blocks")
 let score = 10
 print("score before the if statement:", score)
 if score == 10 {
     print("The condition 'score == 10' is true.")
     print("Inside the then-branch we add 5 to score.")
     score = score + 5
-    print("lets define a variable apap to check the scope")
-    let apap = 10
+    let branch_only = 10
+    print("branch_only is visible inside the branch:", branch_only)
 } else {
     print("The condition 'score == 10' is false.")
 }
 print("score after the if statement:", score)
-print("apap", apap)
 
 // Comments are ignored by the lexer.
 // Single-line comments are fine.
