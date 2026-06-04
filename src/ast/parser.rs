@@ -204,7 +204,7 @@ impl Parser {
     /// Parses a binary expression using operator-precedence climbing.
     ///
     /// Continues consuming operators whose precedence is ≥ `precedence`,
-    /// recursing with the current level to build a left-associative tree.
+    /// recursing with a higher threshold for left-associative operators.
     pub fn parse_binary_expression(&mut self, precedence: u8) -> Option<ASTExpression> {
         let mut left: ASTExpression = self.parse_primary_expression()?;
 
@@ -219,7 +219,15 @@ impl Parser {
                 break;
             }
             self.consume();
-            let right: ASTExpression = self.parse_binary_expression(operator_precedence)?;
+            let next_precedence = if matches!(
+                operator.as_ref().map(|op| &op.kind),
+                Some(ASTBinaryOperatorKind::Exponentiation)
+            ) {
+                operator_precedence
+            } else {
+                operator_precedence + 1
+            };
+            let right: ASTExpression = self.parse_binary_expression(next_precedence)?;
             left = ASTExpression::binary(operator.unwrap(), left, right);
         }
 
