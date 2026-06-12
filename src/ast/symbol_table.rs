@@ -20,7 +20,7 @@
 //! The only implicit widening allowed is `Integer → Float`.
 
 use crate::ast::types::{DataType, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A single variable binding with its value, type, and mutability.
 #[derive(Debug, Clone)]
@@ -206,6 +206,22 @@ impl SymbolTable {
             Some(symbol) => Ok(symbol.is_mutable),
             None => Err(format!("Variable '{}' not found", name)),
         }
+    }
+
+    /// Returns all visible variable names from innermost to outermost scope.
+    pub fn all_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut seen = HashSet::new();
+
+        for scope in self.scopes.iter().rev() {
+            for name in scope.symbols.keys() {
+                if seen.insert(name.clone()) {
+                    names.push(name.clone());
+                }
+            }
+        }
+
+        names
     }
 }
 

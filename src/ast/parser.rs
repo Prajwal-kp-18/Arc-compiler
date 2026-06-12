@@ -36,6 +36,7 @@ use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
 use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement};
 use crate::ast::lexer::TokenKind;
+use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 
 /// Parses a token stream into an AST.
 ///
@@ -45,6 +46,7 @@ use crate::ast::lexer::TokenKind;
 pub struct Parser {
     tokens: Vec<crate::ast::lexer::Token>,
     current: usize,
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl Parser {
@@ -55,6 +57,7 @@ impl Parser {
         Parser {
             tokens: tokens.iter().filter(|token| token.kind != TokenKind::Whitespace).cloned().collect(),
             current: 0,
+            diagnostics: Vec::new(),
         }
     }
 
@@ -62,7 +65,24 @@ impl Parser {
         Parser {
             tokens,
             current: 0,
+            diagnostics: Vec::new(),
         }
+    }
+
+    fn emit_error(&mut self, message: impl Into<String>, span: Option<crate::ast::lexer::TextSpan>) {
+        self.diagnostics.push(Diagnostic::new(DiagnosticKind::ParseError, message, span));
+    }
+
+    fn emit_error_with_suggestion(
+        &mut self,
+        message: impl Into<String>,
+        span: Option<crate::ast::lexer::TextSpan>,
+        suggestion: impl Into<String>,
+    ) {
+        self.diagnostics.push(
+            Diagnostic::new(DiagnosticKind::ParseError, message, span)
+                .with_suggestion(suggestion),
+        );
     }
 
     
@@ -115,7 +135,11 @@ impl Parser {
         }
         
         // Otherwise, parse as expression statement
-        let expr = self.parse_expression()?;
+        let expr = self.parse_expression().or_else(|| {
+            let span = self.current().map(|t| t.span.clone());
+            self.emit_error("Expected a statement", span);
+            None
+        })?;
         
         // Consume optional semicolon
         if self.current().map(|t| &t.kind) == Some(&TokenKind::Semicolon) {
@@ -143,28 +167,33 @@ impl Parser {
     pub fn parse_function_declaration(&mut self) -> Option<ASTStatement> {
         self.consume(); // consume `fn`
 
-        let name_token = self.consume()?;
+        let name_token = self.consume()?.clone();
         let name = match &name_token.kind {
             TokenKind::Identifier(identifier) => identifier.clone(),
             _ => {
-                eprintln!("Expected function name after 'fn'");
+                self.emit_error_with_suggestion(
+                    "Expected function name after 'fn'",
+                    Some(name_token.span.clone()),
+                    "Declare a name like: fn my_function() { ... }",
+                );
                 return None;
             }
         };
 
         if self.consume()?.kind != TokenKind::LeftParen {
-            eprintln!("Expected '(' after function name");
+            let span = self.peek(-1).map(|t| t.span.clone());
+            self.emit_error("Expected '(' after function name", span);
             return None;
         }
 
         let mut parameters = Vec::new();
         if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
             loop {
-                let parameter_token = self.consume()?;
+                let parameter_token = self.consume()?.clone();
                 match &parameter_token.kind {
                     TokenKind::Identifier(identifier) => parameters.push(identifier.clone()),
                     _ => {
-                        eprintln!("Expected parameter name in function declaration");
+                        self.emit_error("Expected parameter name in function declaration", Some(parameter_token.span.clone()));
                         return None;
                     }
                 }
@@ -178,7 +207,8 @@ impl Parser {
         }
 
         if self.consume()?.kind != TokenKind::RightParen {
-            eprintln!("Expected ')' after function parameters");
+            let span = self.peek(-1).map(|t| t.span.clone());
+            self.emit_error("Expected ')' after function parameters", span);
             return None;
         }
 
@@ -199,7 +229,9 @@ impl Parser {
     }
 
     pub fn parse_block(&mut self) -> Option<Vec<ASTStatement>> {
-        if self.consume()?.kind != TokenKind::LeftBrace {
+        let left_brace = self.consume()?.clone();
+        if left_brace.kind != TokenKind::LeftBrace {
+            self.emit_error("Expected '{' to start block", Some(left_brace.span.clone()));
             return None;
         }
 
@@ -207,7 +239,11 @@ impl Parser {
 
         while self.current().map(|t| &t.kind) != Some(&TokenKind::RightBrace) {
             if self.current().is_none() {
-                eprintln!("Unclosed block");
+                self.emit_error_with_suggestion(
+                    "Unclosed block",
+                    Some(left_brace.span.clone()),
+                    "Add a closing '}' for this block",
+                );
                 return None;
             }
 
@@ -226,18 +262,21 @@ impl Parser {
         let keyword = self.consume()?;
         let is_mutable = keyword.kind == TokenKind::Let;
         
-        let name_token = self.consume()?;
+        let name_token = self.consume()?.clone();
         let name = match name_token.kind {
             TokenKind::Identifier(ref n) => n.clone(),
             _ => {
-                eprintln!("Expected identifier after '{}' keyword", 
-                    if is_mutable { "let" } else { "const" });
+                self.emit_error(
+                    format!("Expected identifier after '{}' keyword", if is_mutable { "let" } else { "const" }),
+                    Some(name_token.span.clone()),
+                );
                 return None;
             }
         };
         
-        if self.consume()?.kind != TokenKind::Equal {
-            eprintln!("Expected '=' after variable name");
+        let equal_token = self.consume()?.clone();
+        if equal_token.kind != TokenKind::Equal {
+            self.emit_error("Expected '=' after variable name", Some(equal_token.span.clone()));
             return None;
         }
         
@@ -247,20 +286,21 @@ impl Parser {
         }
         
         Some(ASTStatement::variable_declaration(
-            ASTVariableDeclaration::new(name, initializer, is_mutable)
+            ASTVariableDeclaration::new(name, initializer, is_mutable, Some(name_token))
         ))
     }
 
     /// Parses `<name> = <expr>`.
     pub fn parse_assignment(&mut self) -> Option<ASTStatement> {
-        let name_token = self.consume()?;
+        let name_token = self.consume()?.clone();
         let name = match &name_token.kind {
             TokenKind::Identifier(n) => n.clone(),
             _ => return None,
         };
 
-        if self.consume()?.kind != TokenKind::Equal {
-            eprintln!("Expected '=' in assignment");
+        let equal_token = self.consume()?.clone();
+        if equal_token.kind != TokenKind::Equal {
+            self.emit_error("Expected '=' in assignment", Some(equal_token.span.clone()));
             return None;
         }
 
@@ -269,7 +309,7 @@ impl Parser {
             self.consume();
         }
         
-        Some(ASTStatement::assignment(ASTAssignment::new(name, value)))
+        Some(ASTStatement::assignment(ASTAssignment::new(name, value, Some(name_token))))
     }
 
     pub fn parse_expression(&mut self) -> Option<ASTExpression> {
@@ -335,7 +375,7 @@ impl Parser {
                 return Some(ASTExpression::string(string));
             },
             TokenKind::Identifier(name) => {
-                self.consume();
+                let ident_token = self.consume()?.clone();
                 let mut expr = if self.current().map(|t| &t.kind) == Some(&TokenKind::LeftParen) {
                     self.consume();
                     let mut arguments = Vec::new();
@@ -354,12 +394,16 @@ impl Parser {
                     }
 
                     if self.consume()?.kind != TokenKind::RightParen {
-                        panic!("Expected closing parenthesis after function arguments");
+                        self.emit_error(
+                            "Expected closing parenthesis after function arguments",
+                            self.peek(-1).map(|t| t.span.clone()),
+                        );
+                        return None;
                     }
 
-                    ASTExpression::function_call(name, arguments)
+                    ASTExpression::function_call(name, arguments, Some(ident_token.clone()))
                 } else {
-                    ASTExpression::identifier(name)
+                    ASTExpression::identifier(name, Some(ident_token.clone()))
                 };
 
                 // Check for postfix operators (++ and --)
@@ -370,7 +414,8 @@ impl Parser {
                 self.consume();
                 let expression: ASTExpression = self.parse_expression()?;
                 if self.consume()?.kind != TokenKind::RightParen {
-                    panic!("Expected right parenthesis");
+                    self.emit_error("Expected right parenthesis", self.peek(-1).map(|t| t.span.clone()));
+                    return None;
                 }
                 return Some(ASTExpression::paranthesized(expression));
             },
@@ -388,7 +433,10 @@ impl Parser {
                 let operand = self.parse_primary_expression()?;
                 return Some(ASTExpression::unary(operator, operand));
             },
-            _ => None,
+            _ => {
+                self.emit_error("Expected expression", Some(token.span.clone()));
+                None
+            },
         }
     }
 

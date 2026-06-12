@@ -14,7 +14,9 @@
 //! left operand alone, matching standard boolean semantics.
 
 use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement, ASTStatement};
+use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::ast::types::Value;
+use crate::ast::lexer::TextSpan;
 use crate::ast::symbol_table::SymbolTable;
 use std::collections::HashMap;
 
@@ -47,7 +49,7 @@ pub struct ASTEvaluator {
     /// The value produced by the most recently evaluated expression.
     pub last_value: Option<Value>,
     /// Runtime errors accumulated during evaluation.
-    pub errors: Vec<String>,
+    pub errors: Vec<Diagnostic>,
     /// Variable storage for the current execution context.
     pub symbol_table: SymbolTable,
     function_scopes: Vec<FunctionScope>,
@@ -68,8 +70,65 @@ impl ASTEvaluator {
         }
     }
 
-    fn add_error(&mut self, error: String) {
-        self.errors.push(error);
+    fn add_error(&mut self, error: impl Into<String>) {
+        self.errors.push(Diagnostic::new(DiagnosticKind::RuntimeError, error, None));
+    }
+
+    fn add_error_at(&mut self, error: impl Into<String>, span: Option<TextSpan>) {
+        self.errors.push(Diagnostic::new(DiagnosticKind::RuntimeError, error, span));
+    }
+
+    fn add_error_with_suggestion_at(
+        &mut self,
+        error: impl Into<String>,
+        span: Option<TextSpan>,
+        suggestion: impl Into<String>,
+    ) {
+        self.errors.push(
+            Diagnostic::new(DiagnosticKind::RuntimeError, error, span)
+                .with_suggestion(suggestion),
+        );
+    }
+
+    fn closest_name(target: &str, candidates: &[String]) -> Option<String> {
+        let mut best: Option<(usize, String)> = None;
+        for candidate in candidates {
+            let d = Self::levenshtein(target, candidate);
+            if d <= 2 {
+                match &best {
+                    Some((best_d, _)) if d >= *best_d => {}
+                    _ => best = Some((d, candidate.clone())),
+                }
+            }
+        }
+        best.map(|(_, s)| s)
+    }
+
+    fn levenshtein(a: &str, b: &str) -> usize {
+        if a.is_empty() {
+            return b.chars().count();
+        }
+        if b.is_empty() {
+            return a.chars().count();
+        }
+
+        let a_chars: Vec<char> = a.chars().collect();
+        let b_chars: Vec<char> = b.chars().collect();
+        let mut prev: Vec<usize> = (0..=b_chars.len()).collect();
+        let mut curr: Vec<usize> = vec![0; b_chars.len() + 1];
+
+        for (i, ca) in a_chars.iter().enumerate() {
+            curr[0] = i + 1;
+            for (j, cb) in b_chars.iter().enumerate() {
+                let cost = if ca == cb { 0 } else { 1 };
+                curr[j + 1] = (curr[j] + 1)
+                    .min(prev[j + 1] + 1)
+                    .min(prev[j] + cost);
+            }
+            std::mem::swap(&mut prev, &mut curr);
+        }
+
+        prev[b_chars.len()]
     }
 
     fn enter_lexical_scope(&mut self) {
@@ -98,6 +157,18 @@ impl ASTEvaluator {
             }
         }
         None
+    }
+
+    fn all_function_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        for scope in self.function_scopes.iter().rev() {
+            for name in scope.functions.keys() {
+                if !names.contains(name) {
+                    names.push(name.clone());
+                }
+            }
+        }
+        names
     }
 
     fn execute_statements(&mut self, statements: &[ASTStatement]) {
@@ -170,6 +241,7 @@ impl ASTVisitor for ASTEvaluator {
     /// Type coercion (e.g. `int + float`) is handled by
     /// [`Value::coerce_to_common_type`].
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
+        let op_span = Some(expr.operator.token.span.clone());
         // Handle short-circuit evaluation for logical operators (optimization + correctness)
         match expr.operator.kind {
             ASTBinaryOperatorKind::LogicalAnd => {
@@ -225,7 +297,7 @@ impl ASTVisitor for ASTEvaluator {
         let left = match &self.last_value {
             Some(v) => v.clone(),
             None => {
-                self.add_error("Left operand evaluation failed".to_string());
+                self.add_error_at("Left operand evaluation failed", op_span.clone());
                 return;
             }
         };
@@ -234,7 +306,7 @@ impl ASTVisitor for ASTEvaluator {
         let right = match &self.last_value {
             Some(v) => v.clone(),
             None => {
-                self.add_error("Right operand evaluation failed".to_string());
+                self.add_error_at("Right operand evaluation failed", op_span.clone());
                 return;
             }
         };
@@ -248,12 +320,12 @@ impl ASTVisitor for ASTEvaluator {
                         (Value::Float(a), Value::Float(b)) => Some(Value::Float(a + b)),
                         (Value::String(a), Value::String(b)) => Some(Value::String(format!("{}{}", a, b))),
                         _ => {
-                            self.add_error(format!("Cannot add {:?} and {:?}", left.get_type(), right.get_type()));
+                            self.add_error_at(format!("Cannot add {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -264,12 +336,12 @@ impl ASTVisitor for ASTEvaluator {
                         (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a - b)),
                         (Value::Float(a), Value::Float(b)) => Some(Value::Float(a - b)),
                         _ => {
-                            self.add_error(format!("Cannot subtract {:?} from {:?}", right.get_type(), left.get_type()));
+                            self.add_error_at(format!("Cannot subtract {:?} from {:?}", right.get_type(), left.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -280,12 +352,12 @@ impl ASTVisitor for ASTEvaluator {
                         (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a * b)),
                         (Value::Float(a), Value::Float(b)) => Some(Value::Float(a * b)),
                         _ => {
-                            self.add_error(format!("Cannot multiply {:?} and {:?}", left.get_type(), right.get_type()));
+                            self.add_error_at(format!("Cannot multiply {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -296,7 +368,7 @@ impl ASTVisitor for ASTEvaluator {
                         (Value::Integer(a), Value::Integer(b)) => {
                             // Check for division by zero at runtime
                             if b == 0 {
-                                self.add_error("Division by zero".to_string());
+                                self.add_error_at("Division by zero", op_span.clone());
                                 None
                             } else {
                                 Some(Value::Integer(a / b))
@@ -305,19 +377,19 @@ impl ASTVisitor for ASTEvaluator {
                         (Value::Float(a), Value::Float(b)) => {
                             // Floating point division by zero check
                             if b == 0.0 {
-                                self.add_error("Division by zero".to_string());
+                                self.add_error_at("Division by zero", op_span.clone());
                                 None
                             } else {
                                 Some(Value::Float(a / b))
                             }
                         },
                         _ => {
-                            self.add_error(format!("Cannot divide {:?} by {:?}", left.get_type(), right.get_type()));
+                            self.add_error_at(format!("Cannot divide {:?} by {:?}", left.get_type(), right.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -327,7 +399,7 @@ impl ASTVisitor for ASTEvaluator {
                     Ok((l, r)) => match (l, r) {
                         (Value::Integer(a), Value::Integer(b)) => {
                             if b == 0 {
-                                self.add_error("Modulo by zero".to_string());
+                                self.add_error_at("Modulo by zero", op_span.clone());
                                 None
                             } else {
                                 Some(Value::Integer(a % b))
@@ -335,12 +407,12 @@ impl ASTVisitor for ASTEvaluator {
                         },
                         (Value::Float(a), Value::Float(b)) => Some(Value::Float(a % b)),
                         _ => {
-                            self.add_error(format!("Cannot compute modulo of {:?} and {:?}", left.get_type(), right.get_type()));
+                            self.add_error_at(format!("Cannot compute modulo of {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -358,12 +430,12 @@ impl ASTVisitor for ASTEvaluator {
                         },
                         (Value::Float(a), Value::Float(b)) => Some(Value::Float(a.powf(b))),
                         _ => {
-                            self.add_error(format!("Cannot exponentiate {:?} and {:?}", left.get_type(), right.get_type()));
+                            self.add_error_at(format!("Cannot exponentiate {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
                             None
                         }
                     },
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -373,7 +445,7 @@ impl ASTVisitor for ASTEvaluator {
                 match (left.to_integer(), right.to_integer()) {
                     (Ok(l), Ok(r)) => Some(Value::Integer(l & r)),
                     _ => {
-                        self.add_error("Bitwise AND requires integer operands".to_string());
+                        self.add_error_at("Bitwise AND requires integer operands", op_span.clone());
                         None
                     }
                 }
@@ -382,7 +454,7 @@ impl ASTVisitor for ASTEvaluator {
                 match (left.to_integer(), right.to_integer()) {
                     (Ok(l), Ok(r)) => Some(Value::Integer(l | r)),
                     _ => {
-                        self.add_error("Bitwise OR requires integer operands".to_string());
+                        self.add_error_at("Bitwise OR requires integer operands", op_span.clone());
                         None
                     }
                 }
@@ -391,7 +463,7 @@ impl ASTVisitor for ASTEvaluator {
                 match (left.to_integer(), right.to_integer()) {
                     (Ok(l), Ok(r)) => Some(Value::Integer(l ^ r)),
                     _ => {
-                        self.add_error("Bitwise XOR requires integer operands".to_string());
+                        self.add_error_at("Bitwise XOR requires integer operands", op_span.clone());
                         None
                     }
                 }
@@ -400,7 +472,7 @@ impl ASTVisitor for ASTEvaluator {
                 match (left.to_integer(), right.to_integer()) {
                     (Ok(l), Ok(r)) => Some(Value::Integer(l << r)),
                     _ => {
-                        self.add_error("Left shift requires integer operands".to_string());
+                        self.add_error_at("Left shift requires integer operands", op_span.clone());
                         None
                     }
                 }
@@ -409,7 +481,7 @@ impl ASTVisitor for ASTEvaluator {
                 match (left.to_integer(), right.to_integer()) {
                     (Ok(l), Ok(r)) => Some(Value::Integer(l >> r)),
                     _ => {
-                        self.add_error("Right shift requires integer operands".to_string());
+                        self.add_error_at("Right shift requires integer operands", op_span.clone());
                         None
                     }
                 }
@@ -419,7 +491,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.equals(&right) {
                     Ok(result) => Some(Value::Boolean(result)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -428,7 +500,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.equals(&right) {
                     Ok(result) => Some(Value::Boolean(!result)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -437,7 +509,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.compare(&right) {
                     Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Less)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -446,7 +518,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.compare(&right) {
                     Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Greater)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -455,7 +527,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.compare(&right) {
                     Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Greater)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -464,7 +536,7 @@ impl ASTVisitor for ASTEvaluator {
                 match left.compare(&right) {
                     Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Less)),
                     Err(e) => {
-                        self.add_error(e);
+                        self.add_error_at(e, op_span.clone());
                         None
                     }
                 }
@@ -605,7 +677,17 @@ impl ASTVisitor for ASTEvaluator {
         match self.symbol_table.get_value(&ident.name) {
             Ok(value) => self.last_value = Some(value),
             Err(e) => {
-                self.add_error(e);
+                let span = ident.token.as_ref().map(|t| t.span.clone());
+                let visible_names = self.symbol_table.all_names();
+                if let Some(suggestion_name) = Self::closest_name(&ident.name, &visible_names) {
+                    self.add_error_with_suggestion_at(
+                        e,
+                        span,
+                        format!("did you mean '{}' ?", suggestion_name),
+                    );
+                } else {
+                    self.add_error_at(e, span);
+                }
                 self.last_value = None;
             }
         }
@@ -622,11 +704,13 @@ impl ASTVisitor for ASTEvaluator {
                     value.clone(),
                     decl.is_mutable
                 ) {
-                    self.add_error(e);
+                    let span = decl.name_span.as_ref().map(|t| t.span.clone());
+                    self.add_error_at(e, span);
                 }
             }
             None => {
-                self.add_error(format!("Failed to evaluate initializer for variable '{}'", decl.name));
+                let span = decl.name_span.as_ref().map(|t| t.span.clone());
+                self.add_error_at(format!("Failed to evaluate initializer for variable '{}'", decl.name), span);
             }
         }
     }
@@ -671,11 +755,22 @@ impl ASTVisitor for ASTEvaluator {
         match &self.last_value {
             Some(value) => {
                 if let Err(e) = self.symbol_table.assign(&assign.name, value.clone()) {
-                    self.add_error(e);
+                    let span = assign.name_span.as_ref().map(|t| t.span.clone());
+                    let visible_names = self.symbol_table.all_names();
+                    if let Some(suggestion_name) = Self::closest_name(&assign.name, &visible_names) {
+                        self.add_error_with_suggestion_at(
+                            e,
+                            span,
+                            format!("did you mean '{}' ?", suggestion_name),
+                        );
+                    } else {
+                        self.add_error_at(e, span);
+                    }
                 }
             }
             None => {
-                self.add_error(format!("Failed to evaluate value for assignment to '{}'", assign.name));
+                let span = assign.name_span.as_ref().map(|t| t.span.clone());
+                self.add_error_at(format!("Failed to evaluate value for assignment to '{}'", assign.name), span);
             }
         }
     }
@@ -722,13 +817,14 @@ impl ASTVisitor for ASTEvaluator {
     /// Currently `print`, `max`, and `min` are supported. Unknown function names are reported
     /// as errors via [`ASTEvaluator::errors`].
     fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
+        let call_span = func_call.token.as_ref().map(|t| t.span.clone());
         let mut argument_values = Vec::new();
         for arg in &func_call.arguments {
             self.visit_expression(arg);
             if let Some(value) = &self.last_value {
                 argument_values.push(value.clone());
             } else {
-                self.add_error(format!("Failed to evaluate argument to '{}'", func_call.name));
+                self.add_error_at(format!("Failed to evaluate argument to '{}'", func_call.name), call_span.clone());
                 self.last_value = None;
                 return;
             }
@@ -760,7 +856,7 @@ impl ASTVisitor for ASTEvaluator {
             }
             "max" => {
                 if argument_values.is_empty() {
-                    self.add_error("max() requires at least one argument".to_string());
+                    self.add_error_at("max() requires at least one argument", call_span.clone());
                     self.last_value = None;
                     return;
                 }
@@ -772,7 +868,7 @@ impl ASTVisitor for ASTEvaluator {
                         Ok(std::cmp::Ordering::Less) => current = v,
                         Ok(_) => (),
                         Err(e) => {
-                            self.add_error(format!("max() comparison error: {}", e));
+                            self.add_error_at(format!("max() comparison error: {}", e), call_span.clone());
                             self.last_value = None;
                             return;
                         }
@@ -783,7 +879,7 @@ impl ASTVisitor for ASTEvaluator {
             }
             "min" => {
                 if argument_values.is_empty() {
-                    self.add_error("min() requires at least one argument".to_string());
+                    self.add_error_at("min() requires at least one argument", call_span.clone());
                     self.last_value = None;
                     return;
                 }
@@ -795,7 +891,7 @@ impl ASTVisitor for ASTEvaluator {
                         Ok(std::cmp::Ordering::Greater) => current = v,
                         Ok(_) => (),
                         Err(e) => {
-                            self.add_error(format!("min() comparison error: {}", e));
+                            self.add_error_at(format!("min() comparison error: {}", e), call_span.clone());
                             self.last_value = None;
                             return;
                         }
@@ -805,7 +901,18 @@ impl ASTVisitor for ASTEvaluator {
                 self.last_value = Some(current);
             }
             _ => {
-                self.add_error(format!("Unknown function: '{}'", func_call.name));
+                let mut all_functions = vec!["print".to_string(), "max".to_string(), "min".to_string()];
+                all_functions.extend(self.all_function_names());
+
+                if let Some(suggestion_name) = Self::closest_name(&func_call.name, &all_functions) {
+                    self.add_error_with_suggestion_at(
+                        format!("Unknown function: '{}'", func_call.name),
+                        call_span,
+                        format!("did you mean '{}' ?", suggestion_name),
+                    );
+                } else {
+                    self.add_error_at(format!("Unknown function: '{}'", func_call.name), call_span);
+                }
                 self.last_value = None;
             }
         }

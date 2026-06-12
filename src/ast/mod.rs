@@ -24,6 +24,7 @@ pub mod parser;
 pub mod evaluator;
 pub mod types;
 pub mod symbol_table;
+pub mod diagnostic;
 
 use crate::ast::lexer::Token;
 use crate::ast::types::Value;
@@ -577,12 +578,12 @@ impl ASTExpression {
         ASTExpression::new(ASTExpressionKind::PostfixUnary(ASTPostfixUnaryExpression { operand: Box::new(operand), operator }))
     }
 
-    pub fn identifier(name: String) -> Self {
-        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression { name }))
+    pub fn identifier(name: String, token: Option<Token>) -> Self {
+        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression { name, token }))
     }
 
-    pub fn function_call(name: String, arguments: Vec<ASTExpression>) -> Self {
-        ASTExpression::new(ASTExpressionKind::FunctionCall(ASTFunctionCallExpression { name, arguments }))
+    pub fn function_call(name: String, arguments: Vec<ASTExpression>, token: Option<Token>) -> Self {
+        ASTExpression::new(ASTExpressionKind::FunctionCall(ASTFunctionCallExpression { name, arguments, token }))
     }
 }
 
@@ -599,14 +600,17 @@ pub struct ASTVariableDeclaration {
     pub initializer: Box<ASTExpression>,
     /// `true` for `let` (mutable), `false` for `const` (immutable).
     pub is_mutable: bool,
+    /// Source span of the declared variable name.
+    pub name_span: Option<Token>,
 }
 
 impl ASTVariableDeclaration {
-    pub fn new(name: String, initializer: ASTExpression, is_mutable: bool) -> Self {
+    pub fn new(name: String, initializer: ASTExpression, is_mutable: bool, name_span: Option<Token>) -> Self {
         ASTVariableDeclaration {
             name,
             initializer: Box::new(initializer),
             is_mutable,
+            name_span,
         }
     }
 }
@@ -616,13 +620,15 @@ impl ASTVariableDeclaration {
 pub struct ASTAssignment {
     pub name: String,
     pub value: Box<ASTExpression>,
+    pub name_span: Option<Token>,
 }
 
 impl ASTAssignment {
-    pub fn new(name: String, value: ASTExpression) -> Self {
+    pub fn new(name: String, value: ASTExpression, name_span: Option<Token>) -> Self {
         ASTAssignment {
             name,
             value: Box::new(value),
+            name_span,
         }
     }
 }
@@ -631,11 +637,12 @@ impl ASTAssignment {
 #[derive(Clone)]
 pub struct ASTIdentifierExpression {
     pub name: String,
+    pub token: Option<Token>,
 }
 
 impl ASTIdentifierExpression {
-    pub fn new(name: String) -> Self {
-        ASTIdentifierExpression { name }
+    pub fn new(name: String, token: Option<Token>) -> Self {
+        ASTIdentifierExpression { name, token }
     }
 }
 
@@ -644,10 +651,11 @@ impl ASTIdentifierExpression {
 pub struct ASTFunctionCallExpression {
     pub name: String,
     pub arguments: Vec<ASTExpression>,
+    pub token: Option<Token>,
 }
 
 impl ASTFunctionCallExpression {
-    pub fn new(name: String, arguments: Vec<ASTExpression>) -> Self {
-        ASTFunctionCallExpression { name, arguments }
+    pub fn new(name: String, arguments: Vec<ASTExpression>, token: Option<Token>) -> Self {
+        ASTFunctionCallExpression { name, arguments, token }
     }
 }

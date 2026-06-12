@@ -55,18 +55,33 @@ fn execute_file(filename: &str) {
         match parser.next_statement() {
             Some(statement) => ast.add_statement(statement),
             None => {
-                eprintln!("Parse error: Invalid syntax in file '{}'.", filename);
+                if parser.diagnostics.is_empty() {
+                    eprintln!("Parse error: Invalid syntax in file '{}'.", filename);
+                } else {
+                    eprintln!("\n=== Parse Errors ===");
+                    for diagnostic in &parser.diagnostics {
+                        eprintln!("{}", diagnostic.format_with_source(&contents));
+                    }
+                }
                 return;
             }
         }
+    }
+
+    if !parser.diagnostics.is_empty() {
+        eprintln!("\n=== Parse Errors ===");
+        for diagnostic in &parser.diagnostics {
+            eprintln!("{}", diagnostic.format_with_source(&contents));
+        }
+        return;
     }
 
     ast.visit(&mut evaluator);
     
     if !evaluator.errors.is_empty() {
         println!("\n=== Errors ===");
-        for error in &evaluator.errors {
-            eprintln!("{}", error);
+        for diagnostic in &evaluator.errors {
+            eprintln!("{}", diagnostic.format_with_source(&contents));
         }
     }
 }
@@ -96,7 +111,7 @@ fn run_repl() {
                 
                 // Exit commands
                 if input == "exit" || input == "quit" {
-                    println!("ThankYou!");
+                    println!("Session ended. Goodbye.");
                     break;
                 }
                 
@@ -126,10 +141,15 @@ fn run_repl() {
                         let error_count_after = evaluator.errors.len();
                         
                         // Display result
-                        if error_count_after > error_count_before {
+                        if !parser.diagnostics.is_empty() {
+                            println!("Parse error:");
+                            for diagnostic in &parser.diagnostics {
+                                println!("  {}", diagnostic.format_with_source(input));
+                            }
+                        } else if error_count_after > error_count_before {
                             println!("Error:");
                             for i in error_count_before..error_count_after {
-                                println!("  {}", evaluator.errors[i]);
+                                println!("  {}", evaluator.errors[i].format_with_source(input));
                             }
                         } else {
                             match &evaluator.last_value {

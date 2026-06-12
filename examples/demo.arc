@@ -128,11 +128,63 @@ print("score after the if statement:", score)
 // Single-line comments are fine.
 /* Multi-line comments are also supported. */
 
+// -----------------------------------------------------------------------------
+// 12) Regression tests (manual)
+// -----------------------------------------------------------------------------
 print("")
-print("=== Demo Complete ===")
+print("12) Regression tests (manual)")
 
+// Test A: bare block works and does not leak shadowed value
+let outer = 5
 {
-    let agsa = 10
+    let outer = 99
+    print("inside block, outer =", outer) // expected: 99
+}
+print("outside block, outer =", outer) // expected: 5
+
+// Test B: if block scope still works
+if true {
+    let inside_if = 123
+    print("inside if block =", inside_if) // expected: 123
 }
 
-print(agsa)
+// Test C: quick PASS/FAIL checks
+let tests_passed = 0
+let tests_failed = 0
+
+let t1 = (outer == 5)
+if t1 {
+    tests_passed = tests_passed + 1
+    print("[PASS] outer value preserved after block")
+} else {
+    tests_failed = tests_failed + 1
+    print("[FAIL] outer value preserved after block")
+}
+
+let t2 = (add(2, 3) == 5)
+if t2 {
+    tests_passed = tests_passed + 1
+    print("[PASS] function add(2,3)")
+} else {
+    tests_failed = tests_failed + 1
+    print("[FAIL] function add(2,3)")
+}
+
+let t3 = (square(4) == 16)
+if t3 {
+    tests_passed = tests_passed + 1
+    print("[PASS] function square(4)")
+} else {
+    tests_failed = tests_failed + 1
+    print("[FAIL] function square(4)")
+}
+
+print("tests_passed =", tests_passed)
+print("tests_failed =", tests_failed)
+
+// Expected-runtime-error tests (uncomment one by one to validate diagnostics):
+// print(not_declared_var)
+// prnit("typo in function name")
+
+print("")
+print("=== Demo Complete ===")
