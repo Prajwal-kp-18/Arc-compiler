@@ -101,6 +101,12 @@ impl Parser {
             return self.parse_if_statement();
         }
 
+        // Check for bare block statement `{ ... }`
+        if token.kind == TokenKind::LeftBrace {
+            let block = self.parse_block()?;
+            return Some(crate::ast::ASTStatement::block(block));
+        }
+
         // Check for assignment - needs lookahead to distinguish from identifier expression
         if let TokenKind::Identifier(_) = token.kind {
             if self.peek(1).map(|t| &t.kind) == Some(&TokenKind::Equal) {

@@ -130,3 +130,9 @@ print("score after the if statement:", score)
 
 print("")
 print("=== Demo Complete ===")
+
+{
+    let agsa = 10
+}
+
+print(agsa)

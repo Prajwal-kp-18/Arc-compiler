@@ -70,6 +70,7 @@ pub trait ASTVisitor {
             ASTStatementKind::Expression(expr) => self.visit_expression(expr),
             ASTStatementKind::VariableDeclaration(decl) => self.visit_variable_declaration(decl),
             ASTStatementKind::Assignment(assign) => self.visit_assignment(assign),
+            ASTStatementKind::Block(stmts) => self.visit_block(stmts),
             ASTStatementKind::IfStatement(if_stmt) => self.visit_if_statement(if_stmt),
             ASTStatementKind::FunctionDeclaration(func) => self.visit_function_declaration(func),
             ASTStatementKind::ReturnStatement(ret) => self.visit_return_statement(ret),
@@ -177,6 +178,13 @@ pub trait ASTVisitor {
             }
         }
     }
+
+    /// Called for plain block statements `{ ... }`. Default visits each statement.
+    fn visit_block(&mut self, statements: &Vec<ASTStatement>) {
+        for stmt in statements {
+            self.visit_statement(stmt);
+        }
+    }
 }
 
 /// An [`ASTVisitor`] that pretty-prints the tree structure to stdout.
@@ -261,6 +269,15 @@ impl ASTVisitor for ASTPrintor {
         self.visit_expression(&assign.value);
         self.indent -= LEVEL_INDENT;
     }
+
+    fn visit_block(&mut self, statements: &Vec<ASTStatement>) {
+        self.print_with_indent("Block");
+        self.indent += LEVEL_INDENT;
+        for stmt in statements {
+            self.visit_statement(stmt);
+        }
+        self.indent -= LEVEL_INDENT;
+    }
 }
 
 impl ASTPrintor {
@@ -279,6 +296,7 @@ pub enum  ASTStatementKind{
     Expression(ASTExpression),
     VariableDeclaration(ASTVariableDeclaration),
     Assignment(ASTAssignment),
+    Block(Vec<ASTStatement>),
     IfStatement(ASTIfStatement),
     FunctionDeclaration(ASTFunctionDeclaration),
     ReturnStatement(ASTReturnStatement),
@@ -313,6 +331,11 @@ impl ASTStatement {
     /// Wraps an if statement as a statement.
     pub fn if_statement(if_stmt: ASTIfStatement) -> Self {
         ASTStatement::new(ASTStatementKind::IfStatement(if_stmt))
+    }
+
+    /// Wraps a bare block `{ ... }` as a statement.
+    pub fn block(statements: Vec<ASTStatement>) -> Self {
+        ASTStatement::new(ASTStatementKind::Block(statements))
     }
 
     /// Wraps a function declaration as a statement.

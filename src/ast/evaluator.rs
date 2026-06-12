@@ -708,6 +708,15 @@ impl ASTVisitor for ASTEvaluator {
         self.last_value = None;
     }
 
+    fn visit_block(&mut self, statements: &Vec<ASTStatement>) {
+        self.enter_lexical_scope();
+        self.execute_statements(statements);
+        if let Err(e) = self.exit_lexical_scope() {
+            self.add_error(e);
+        }
+        self.last_value = None;
+    }
+
     /// Dispatches to built-in function implementations.
     ///
     /// Currently `print`, `max`, and `min` are supported. Unknown function names are reported
