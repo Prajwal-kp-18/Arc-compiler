@@ -5,12 +5,11 @@
 //! ## Usage
 //!
 //! ```rust
-//! use Arc_compiler::ast::lexer::{Lexer, TokenKind};
+//! use arc_compiler::ast::lexer::Lexer;
 //!
 //! let mut lexer = Lexer::new("let x = 42");
 //! while let Some(token) = lexer.next_token() {
-//!     if token.kind == TokenKind::EOF { break; }
-//!     println!("{:?}", token.kind);
+//!     println!("{:?}", token);
 //! }
 //! ```
 //!

@@ -34,13 +34,12 @@ Arc uses a classic four-stage compilation pipeline:
 
 Converts source code into a stream of tokens.
 
-**Token Types** (36 total):
+**Token Types**:
 - **Literals**: `Number`, `Float`, `Boolean`, `String`
-- **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`
- - **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`
-- **Keywords**: `let`, `const`
-- **Delimiters**: `(`, `)`, `,`, `{`, `}`
-- **Special**: `=`, `;`, `EOF`, `Whitespace`
+- **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`
+- **Keywords**: `let`, `const`, `fn`, `return`, `if`, `else`
+- **Delimiters**: `(`, `)`, `,`, `{`, `}`, `;`
+- **Special**: `=`, `Identifier`, `EOF`, `Whitespace`, `Bad`
 
 **Features**:
 - Position tracking for error reporting
@@ -57,6 +56,10 @@ Builds an Abstract Syntax Tree (AST) using precedence climbing.
 - Expression statements
 - Variable declarations (`let`, `const`)
 - Assignment statements
+- Bare block statements (`{ ... }`)
+- If/else statements
+- Function declarations
+- Return statements
 
 **Expression Types**:
 - Number literals (integer and float)
@@ -72,15 +75,15 @@ Builds an Abstract Syntax Tree (AST) using precedence climbing.
 **Operator Precedence** (11 levels, lowest to highest):
 1. Logical OR (`||`)
 2. Logical AND (`&&`)
-3. Bitwise OR (`|`)
-4. Bitwise XOR (`^`)
-5. Bitwise AND (`&`)
-6. Equality (`==`, `!=`)
-7. Comparison (`<`, `>`, `<=`, `>=`)
+3. Equality (`==`, `!=`)
+4. Comparison (`<`, `>`, `<=`, `>=`)
+5. Bitwise OR (`|`)
+6. Bitwise XOR (`^`)
+7. Bitwise AND (`&`)
 8. Bit shifts (`<<`, `>>`)
 9. Addition/Subtraction (`+`, `-`)
 10. Multiplication/Division/Modulo (`*`, `/`, `%`)
-11. Exponentiation (`**`)
+11. Exponentiation (`**`, right-associative)
 
 ### 3. Symbol Table
 **Location**: `src/ast/symbol_table.rs`
@@ -92,7 +95,7 @@ Manages variable storage and scope.
 - Type-safe assignment
 - Undefined variable detection
 - Redeclaration prevention
-- Scope management (ready for future nested scopes)
+- Nested lexical scopes for blocks, condition branches, and function calls
 
 ### 4. Evaluation (Evaluator)
 **Location**: `src/ast/evaluator.rs`
@@ -105,6 +108,7 @@ Executes the AST using the Visitor pattern.
 - Short-circuit evaluation for logical operators
 - Error collection without stopping execution
 - Built-in function support
+- User-defined function support with closures over the declaration environment
 
 ---
 
@@ -125,7 +129,52 @@ PI = 3.15        // ERROR: PI is immutable
 ```
 
 #### Scope
-Currently, all variables are in global scope. Block scoping is planned for future releases.
+Variables use lexical scoping. Bare blocks, `if`/`else` branches, and function calls create inner scopes. Lookup searches from the innermost scope outward, and redeclaration is only rejected within the same scope.
+
+```arc
+let value = 5
+{
+    let value = 99
+    print(value)  // 99
+}
+print(value)      // 5
+```
+
+### Blocks and Conditionals
+
+```arc
+let score = 10
+
+if score == 10 {
+    print("perfect")
+} else {
+    print("try again")
+}
+
+{
+    let local = "inside block"
+    print(local)
+}
+```
+
+Conditions use truthiness: `false`, `0`, `0.0`, and `""` are false; everything else is true.
+
+### User-Defined Functions
+
+```arc
+fn add(a, b) {
+    return a + b
+}
+
+fn square(n) {
+    return n * n
+}
+
+print(add(12, 8))
+print(square(7))
+```
+
+Functions are declared with `fn`, take positional parameters, and may return a value with `return`. A function without an explicit `return` evaluates to the last value produced by its body.
 
 ### Comments
 
@@ -214,6 +263,17 @@ true || print("Not executed")   // true, print not called
 !true     // Logical NOT
 ```
 
+#### Increment and Decrement
+```arc
+let counter = 10
+++counter   // 11, counter is now 11
+counter++   // 11, counter is now 12
+--counter   // 11, counter is now 11
+counter--   // 11, counter is now 10
+```
+
+Increment and decrement only work on mutable integer and float variables.
+
 ### Type Coercion
 
 Automatic conversion between compatible types:
@@ -248,11 +308,44 @@ const <identifier> = <expression>
 <identifier> = <expression>
 ```
 
+### Block
+```
+{
+    <statement>
+    ...
+}
+```
+
+### If/Else
+```
+if <expression> {
+    <statement>
+    ...
+} else {
+    <statement>
+    ...
+}
+```
+
+### Function Declaration
+```
+fn <identifier>(<param1>, <param2>, ...) {
+    <statement>
+    return <expression>
+}
+```
+
+### Return
+```
+return <expression>
+```
+
 ### Expression
 ```
 <literal>                          // 42, 3.14, true, "hello"
 <identifier>                       // x, myVar
-<unary-op> <expression>           // -5, !true
+<unary-op> <expression>            // -5, !true, ++x
+<expression> <postfix-op>          // x++, x--
 <expression> <binary-op> <expression>  // 5 + 3, x * y
 (<expression>)                     // (5 + 3) * 2
 <identifier>(<args>)              // print(x)
@@ -289,7 +382,7 @@ print("Sum:", 5 + 3)        // Output: Sum: 8
 - Evaluates all arguments
 - Prints them space-separated
 - Adds newline at end
-- Returns no value (statement only)
+- Returns no value
 
 ---
 
@@ -358,7 +451,7 @@ max("b", "a")    // "b"
 - UTF-8 encoded text
 - Immutable
 - Escape sequences: `\n`, `\t`, `\r`, `\\`, `\"`
-- Operations: Comparison (lexicographic)
+- Operations: Concatenation with `+` and comparison (lexicographic)
 
 ### Type Checking
 
