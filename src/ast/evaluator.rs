@@ -20,6 +20,16 @@ use crate::ast::lexer::TextSpan;
 use crate::ast::symbol_table::SymbolTable;
 use std::collections::HashMap;
 
+/// A user-defined function.
+///
+/// `closure` snapshots variable bindings lexically, by value, at the point
+/// the `fn` is declared (cheap to clone: `SymbolTable` shares scopes via
+/// `Rc` until mutated). Function *names*, by contrast, are deliberately
+/// **not** captured here — they resolve dynamically through
+/// [`ASTEvaluator::function_scopes`] at call time. That asymmetry is
+/// intentional: snapshotting function names at declaration time would break
+/// forward references and mutual recursion between sibling functions
+/// (`fn a` calling `fn b` declared later in the same scope).
 #[derive(Clone)]
 struct UserFunction {
     name: String,
@@ -55,9 +65,18 @@ pub struct ASTEvaluator {
     function_scopes: Vec<FunctionScope>,
     call_stack: Vec<String>,
     return_value: Option<Value>,
+    /// Set once a fatal error (e.g. stack overflow) is reported, so the
+    /// unwind back through enclosing calls doesn't pile on a "failed to
+    /// evaluate" diagnostic at every stack frame for the same root cause.
+    fatal: bool,
 }
 
 impl ASTEvaluator {
+    /// Maximum function call nesting depth before we bail with a diagnostic
+    /// instead of overflowing the host stack (Arc recursion runs directly on
+    /// Rust's call stack via the visitor).
+    const MAX_CALL_DEPTH: usize = 200;
+
     /// Creates a new evaluator with an empty symbol table and no errors.
     pub fn new() -> Self {
         Self { 
@@ -67,14 +86,21 @@ impl ASTEvaluator {
             function_scopes: vec![FunctionScope::new()],
             call_stack: Vec::new(),
             return_value: None,
+            fatal: false,
         }
     }
 
     fn add_error(&mut self, error: impl Into<String>) {
+        if self.fatal {
+            return;
+        }
         self.errors.push(Diagnostic::new(DiagnosticKind::RuntimeError, error, None));
     }
 
     fn add_error_at(&mut self, error: impl Into<String>, span: Option<TextSpan>) {
+        if self.fatal {
+            return;
+        }
         self.errors.push(Diagnostic::new(DiagnosticKind::RuntimeError, error, span));
     }
 
@@ -84,6 +110,9 @@ impl ASTEvaluator {
         span: Option<TextSpan>,
         suggestion: impl Into<String>,
     ) {
+        if self.fatal {
+            return;
+        }
         self.errors.push(
             Diagnostic::new(DiagnosticKind::RuntimeError, error, span)
                 .with_suggestion(suggestion),
@@ -181,6 +210,17 @@ impl ASTEvaluator {
     }
 
     fn call_user_function(&mut self, function: UserFunction, argument_values: Vec<Value>) {
+        if self.call_stack.len() >= Self::MAX_CALL_DEPTH {
+            self.add_error(format!(
+                "Stack overflow: maximum recursion depth ({}) exceeded while calling '{}'",
+                Self::MAX_CALL_DEPTH,
+                function.name
+            ));
+            self.fatal = true;
+            self.last_value = None;
+            return;
+        }
+
         if argument_values.len() != function.parameters.len() {
             self.add_error(format!(
                 "Function '{}' expected {} arguments but got {}",
@@ -756,8 +796,16 @@ impl ASTVisitor for ASTEvaluator {
             Some(value) => {
                 if let Err(e) = self.symbol_table.assign(&assign.name, value.clone()) {
                     let span = assign.name_span.as_ref().map(|t| t.span.clone());
-                    let visible_names = self.symbol_table.all_names();
-                    if let Some(suggestion_name) = Self::closest_name(&assign.name, &visible_names) {
+                    // Only offer a "did you mean" suggestion when the name
+                    // itself is the problem (undefined). If it exists but
+                    // the assignment failed (immutable / type mismatch),
+                    // suggesting the exact same name back is nonsensical.
+                    let suggestion_name = if self.symbol_table.exists(&assign.name) {
+                        None
+                    } else {
+                        Self::closest_name(&assign.name, &self.symbol_table.all_names())
+                    };
+                    if let Some(suggestion_name) = suggestion_name {
                         self.add_error_with_suggestion_at(
                             e,
                             span,
@@ -916,6 +964,117 @@ impl ASTVisitor for ASTEvaluator {
                 self.last_value = None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::lexer::Lexer;
+    use crate::ast::parser::Parser;
+    use crate::ast::Ast;
+
+    /// Runs a full source program through the lexer, parser, and evaluator.
+    /// Panics if the program has parse errors, since these tests are about
+    /// evaluator behavior, not parsing.
+    fn run(source: &str) -> ASTEvaluator {
+        let mut lexer = Lexer::new(source);
+        let mut tokens = Vec::new();
+        while let Some(token) = lexer.next_token() {
+            tokens.push(token);
+        }
+
+        let mut parser = Parser::new(tokens);
+        let mut ast = Ast::new();
+        while let Some(stmt) = parser.next_statement() {
+            ast.add_statement(stmt);
+        }
+        assert!(parser.diagnostics.is_empty(), "unexpected parse errors: {:?}", parser.diagnostics.iter().map(|d| &d.message).collect::<Vec<_>>());
+
+        let mut evaluator = ASTEvaluator::new();
+        ast.visit(&mut evaluator);
+        evaluator
+    }
+
+    #[test]
+    fn test_arithmetic_and_precedence() {
+        let evaluator = run("1 + 2 * 3;");
+        assert!(evaluator.errors.is_empty());
+        assert_eq!(evaluator.last_value, Some(Value::Integer(7)));
+    }
+
+    #[test]
+    fn test_int_float_coercion() {
+        let evaluator = run("1 + 2.5;");
+        assert!(evaluator.errors.is_empty());
+        assert_eq!(evaluator.last_value, Some(Value::Float(3.5)));
+    }
+
+    #[test]
+    fn test_division_by_zero_is_reported() {
+        let evaluator = run("1 / 0;");
+        assert_eq!(evaluator.errors.len(), 1);
+        assert!(evaluator.errors[0].message.contains("Division by zero"));
+    }
+
+    #[test]
+    fn test_variable_declaration_and_assignment() {
+        let evaluator = run("let x = 1; x = 2; x;");
+        assert!(evaluator.errors.is_empty());
+        assert_eq!(evaluator.last_value, Some(Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_const_reassignment_is_rejected() {
+        let evaluator = run("const x = 1; x = 2;");
+        assert_eq!(evaluator.errors.len(), 1);
+        assert!(evaluator.errors[0].message.contains("immutable"));
+    }
+
+    #[test]
+    fn test_assign_type_mismatch_is_rejected() {
+        let evaluator = run(r#"let x = 1; x = "oops";"#);
+        assert_eq!(evaluator.errors.len(), 1);
+        assert!(evaluator.errors[0].message.contains("Type mismatch"));
+        // The variable name itself is fine; a "did you mean 'x'?" suggestion
+        // here would be nonsensical.
+        assert!(evaluator.errors[0].suggestion.is_none());
+    }
+
+    #[test]
+    fn test_if_else_branches() {
+        assert_eq!(run("let r = 0; if true { r = 1; } else { r = 2; } r;").last_value, Some(Value::Integer(1)));
+        assert_eq!(run("let r = 0; if false { r = 1; } else { r = 2; } r;").last_value, Some(Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_user_function_call_and_return() {
+        let evaluator = run("fn add(a, b) { return a + b; } add(2, 3);");
+        assert!(evaluator.errors.is_empty());
+        assert_eq!(evaluator.last_value, Some(Value::Integer(5)));
+    }
+
+    #[test]
+    fn test_recursive_function() {
+        let evaluator = run(
+            "fn fact(n) { if n <= 1 { return 1; } else { return n * fact(n - 1); } } fact(10);",
+        );
+        assert!(evaluator.errors.is_empty());
+        assert_eq!(evaluator.last_value, Some(Value::Integer(3628800)));
+    }
+
+    #[test]
+    fn test_unbounded_recursion_is_reported_once_without_crashing() {
+        let evaluator = run("fn boom(n) { return boom(n + 1); } boom(0);");
+        assert_eq!(evaluator.errors.len(), 1);
+        assert!(evaluator.errors[0].message.contains("Stack overflow"));
+    }
+
+    #[test]
+    fn test_undefined_variable_suggests_closest_name() {
+        let evaluator = run("let count = 1; coutn;");
+        assert_eq!(evaluator.errors.len(), 1);
+        assert_eq!(evaluator.errors[0].suggestion.as_deref(), Some("did you mean 'count' ?"));
     }
 }
 

@@ -88,8 +88,62 @@ impl Parser {
     
 
     /// Returns the next parsed statement, or `None` at EOF.
+    ///
+    /// If a statement fails to parse, synchronizes to the next statement
+    /// boundary and keeps going, so a single bad statement doesn't hide
+    /// diagnostics for the rest of the file.
     pub fn next_statement(&mut self) -> Option<ASTStatement>{
-        return self.parse_statement();
+        self.parse_statement_recovering()
+    }
+
+    fn parse_statement_recovering(&mut self) -> Option<ASTStatement> {
+        loop {
+            match self.current().map(|t| &t.kind) {
+                Some(TokenKind::EOF) | None => return None,
+                _ => {}
+            }
+
+            let start = self.current;
+            if let Some(stmt) = self.parse_statement() {
+                return Some(stmt);
+            }
+
+            match self.current().map(|t| &t.kind) {
+                Some(TokenKind::EOF) | None => return None,
+                _ => {}
+            }
+
+            self.synchronize();
+            if self.current == start {
+                // Nothing was consumed (e.g. a stray closing brace); force
+                // progress so we can't spin forever on the same token.
+                self.consume();
+            }
+        }
+    }
+
+    /// Skips tokens until a likely statement boundary: past a `;`, or right
+    /// before `}` / a statement-starting keyword.
+    fn synchronize(&mut self) {
+        while let Some(token) = self.current() {
+            match token.kind {
+                TokenKind::EOF => return,
+                TokenKind::Semicolon => {
+                    self.consume();
+                    return;
+                }
+                TokenKind::RightBrace
+                | TokenKind::Let
+                | TokenKind::Const
+                | TokenKind::Fn
+                | TokenKind::Return
+                | TokenKind::IF
+                | TokenKind::LeftBrace => return,
+                _ => {
+                    self.consume();
+                }
+            }
+        }
     }
 
     /// Dispatches to the correct statement parser based on the current token.
@@ -238,7 +292,7 @@ impl Parser {
         let mut statements = Vec::new();
 
         while self.current().map(|t| &t.kind) != Some(&TokenKind::RightBrace) {
-            if self.current().is_none() {
+            if matches!(self.current().map(|t| &t.kind), None | Some(TokenKind::EOF)) {
                 self.emit_error_with_suggestion(
                     "Unclosed block",
                     Some(left_brace.span.clone()),
@@ -247,7 +301,7 @@ impl Parser {
                 return None;
             }
 
-            let stmt = self.parse_statement()?;
+            let stmt = self.parse_statement_recovering()?;
             statements.push(stmt);
         }
 
@@ -508,5 +562,101 @@ impl Parser {
         self.current += 1;
         let token: &Token = self.peek(-1)?;
         return Some(token);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::lexer::Lexer;
+    use crate::ast::{ASTExpressionKind, ASTStatementKind};
+
+    /// Parses every statement in `source`, returning the parsed statements
+    /// and any diagnostics collected along the way.
+    fn parse_all(source: &str) -> (Vec<ASTStatement>, Vec<Diagnostic>) {
+        let mut lexer = Lexer::new(source);
+        let mut tokens = Vec::new();
+        while let Some(token) = lexer.next_token() {
+            tokens.push(token);
+        }
+        let mut parser = Parser::new(tokens);
+        let mut statements = Vec::new();
+        while let Some(stmt) = parser.next_statement() {
+            statements.push(stmt);
+        }
+        (statements, parser.diagnostics)
+    }
+
+    #[test]
+    fn test_variable_declaration() {
+        let (statements, diagnostics) = parse_all("let x = 42;");
+        assert!(diagnostics.is_empty());
+        assert_eq!(statements.len(), 1);
+        match &statements[0].kind {
+            ASTStatementKind::VariableDeclaration(decl) => {
+                assert_eq!(decl.name, "x");
+                assert!(decl.is_mutable);
+            }
+            _ => panic!("expected a variable declaration"),
+        }
+    }
+
+    #[test]
+    fn test_binary_expression_precedence() {
+        // 1 + 2 * 3 should parse as 1 + (2 * 3): the top-level operator is `+`.
+        let (statements, diagnostics) = parse_all("1 + 2 * 3;");
+        assert!(diagnostics.is_empty());
+        match &statements[0].kind {
+            ASTStatementKind::Expression(expr) => match &expr.kind {
+                ASTExpressionKind::Binary(bin) => {
+                    assert!(matches!(bin.operator.kind, ASTBinaryOperatorKind::Plus));
+                }
+                _ => panic!("expected a binary expression"),
+            },
+            _ => panic!("expected an expression statement"),
+        }
+    }
+
+    #[test]
+    fn test_function_declaration_and_if_else() {
+        let (statements, diagnostics) = parse_all(
+            "fn max2(a, b) { if a > b { return a; } else { return b; } }",
+        );
+        assert!(diagnostics.is_empty());
+        match &statements[0].kind {
+            ASTStatementKind::FunctionDeclaration(func) => {
+                assert_eq!(func.name, "max2");
+                assert_eq!(func.parameters, vec!["a".to_string(), "b".to_string()]);
+                assert_eq!(func.body.len(), 1);
+                assert!(matches!(func.body[0].kind, ASTStatementKind::IfStatement(_)));
+            }
+            _ => panic!("expected a function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_error_recovery_reports_every_bad_statement() {
+        // Two independently broken statements, each surrounded by valid
+        // ones. Recovery should surface both diagnostics, not just the first.
+        let (statements, diagnostics) = parse_all(
+            "let x = 1;\nlet = 2;\nlet y = 3;\nconst = 4;\nlet z = 5;",
+        );
+        assert_eq!(diagnostics.len(), 2);
+        // The three well-formed declarations should still come through.
+        let names: Vec<&str> = statements
+            .iter()
+            .filter_map(|s| match &s.kind {
+                ASTStatementKind::VariableDeclaration(decl) => Some(decl.name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, vec!["x", "y", "z"]);
+    }
+
+    #[test]
+    fn test_unclosed_block_reports_diagnostic() {
+        let (_, diagnostics) = parse_all("fn f() { let x = 1;");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("Unclosed block"));
     }
 }

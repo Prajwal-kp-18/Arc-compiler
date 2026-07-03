@@ -133,9 +133,10 @@ impl<'o> Lexer<'o> {
     pub fn next_token(&mut self) -> Option<Token> {
         if self.current_pos == self.input.len() {
             self.current_pos += 1;
+            let eof_pos = self.input.len();
             return Some(Token::new(
                 TokenKind::EOF,
-                TextSpan::new(0,0,'\u{0000}'.to_string())
+                TextSpan::new(eof_pos, eof_pos, '\u{0000}'.to_string())
             ))
         }
         let c: Option<char> = self.current_char();
@@ -301,19 +302,18 @@ impl<'o> Lexer<'o> {
         c.is_alphanumeric() || *c == '_'
     }
 
+    /// Returns the char starting at the current byte offset, decoding only
+    /// that one char rather than rescanning from the start of the input.
     pub fn current_char(&self) -> Option<char> {
-        self.input.chars().nth(self.current_pos) 
+        self.input.get(self.current_pos..)?.chars().next()
     }
 
-
+    /// Advances past the current char, moving forward by its UTF-8 byte
+    /// length so `current_pos` always lands on a char boundary.
     pub fn consume(&mut self) -> Option<char> {
-        if self.current_pos > self.input.len() {
-            return None;
-        }
-        let c: Option<char> = self.current_char();
-        self.current_pos += 1;
-
-        c
+        let c = self.current_char()?;
+        self.current_pos += c.len_utf8();
+        Some(c)
     }
     
     pub fn consume_number(&mut self) -> i64 {
@@ -435,9 +435,9 @@ impl<'o> Lexer<'o> {
         }
     }
 
-    /// Returns the character at `current_pos + offset` without advancing.
+    /// Returns the char `offset` positions after the current one, without advancing.
     pub fn peek_char(&self, offset: usize) -> Option<char> {
-        self.input.chars().nth(self.current_pos + offset)
+        self.input.get(self.current_pos..)?.chars().nth(offset)
     }
 
     /// Skips characters until (but not including) the next newline.
@@ -462,5 +462,136 @@ impl<'o> Lexer<'o> {
             }
             self.consume();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tokenize(input: &str) -> Vec<Token> {
+        let mut lexer = Lexer::new(input);
+        let mut tokens = Vec::new();
+        while let Some(token) = lexer.next_token() {
+            tokens.push(token);
+        }
+        tokens
+    }
+
+    fn kinds(input: &str) -> Vec<TokenKind> {
+        tokenize(input).into_iter().map(|t| t.kind).collect()
+    }
+
+    #[test]
+    fn test_number_and_float() {
+        assert_eq!(kinds("42"), vec![TokenKind::Number(42), TokenKind::EOF]);
+        assert_eq!(kinds("3.14"), vec![TokenKind::Float(3.14), TokenKind::EOF]);
+    }
+
+    #[test]
+    fn test_dot_without_digit_is_not_a_float() {
+        // `obj.method` shouldn't be misread as `obj` followed by a float.
+        let ks = kinds("obj.method");
+        assert_eq!(ks[0], TokenKind::Identifier("obj".to_string()));
+    }
+
+    #[test]
+    fn test_string_with_escapes() {
+        let ks = kinds(r#""a\nb\t\"c\"""#);
+        assert_eq!(ks[0], TokenKind::String("a\nb\t\"c\"".to_string()));
+    }
+
+    /// Tokenizes and drops whitespace, so tests can focus on meaningful tokens.
+    fn non_whitespace_kinds(input: &str) -> Vec<TokenKind> {
+        kinds(input).into_iter().filter(|k| *k != TokenKind::Whitespace).collect()
+    }
+
+    #[test]
+    fn test_keywords_and_identifiers() {
+        assert_eq!(
+            non_whitespace_kinds("let const fn return if else true false foo"),
+            vec![
+                TokenKind::Let,
+                TokenKind::Const,
+                TokenKind::Fn,
+                TokenKind::Return,
+                TokenKind::IF,
+                TokenKind::ELSE,
+                TokenKind::Boolean(true),
+                TokenKind::Boolean(false),
+                TokenKind::Identifier("foo".to_string()),
+                TokenKind::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_two_char_operators() {
+        assert_eq!(
+            non_whitespace_kinds("== != <= >= && || ** << >> ++ --"),
+            vec![
+                TokenKind::EqualEqual,
+                TokenKind::BangEqual,
+                TokenKind::LessEqual,
+                TokenKind::GreaterEqual,
+                TokenKind::DoubleAmpersand,
+                TokenKind::DoublePipe,
+                TokenKind::DoubleStar,
+                TokenKind::LeftShift,
+                TokenKind::RightShift,
+                TokenKind::PlusPlus,
+                TokenKind::MinusMinus,
+                TokenKind::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_comments_become_whitespace() {
+        assert_eq!(
+            kinds("// comment\n1"),
+            vec![TokenKind::Whitespace, TokenKind::Whitespace, TokenKind::Number(1), TokenKind::EOF]
+        );
+        assert_eq!(
+            kinds("/* block */1"),
+            vec![TokenKind::Whitespace, TokenKind::Number(1), TokenKind::EOF]
+        );
+    }
+
+    #[test]
+    fn test_eof_span_is_end_of_input_not_zero() {
+        let tokens = tokenize("let x = 1");
+        let eof = tokens.last().unwrap();
+        assert_eq!(eof.kind, TokenKind::EOF);
+        assert_eq!(eof.span.start, "let x = 1".len());
+        assert_eq!(eof.span.end, "let x = 1".len());
+    }
+
+    #[test]
+    fn test_non_ascii_string_does_not_panic_and_spans_correctly() {
+        // Regression test: current_pos used to be a char count sliced into
+        // the byte-indexed source string, which panics or mis-slices on any
+        // multi-byte character.
+        let source = r#"let s = "café 🎉""#;
+        let tokens = tokenize(source);
+        let string_token = tokens.iter().find(|t| matches!(t.kind, TokenKind::String(_))).unwrap();
+        assert_eq!(string_token.kind, TokenKind::String("café 🎉".to_string()));
+        // The span's literal must match a valid slice of the original source.
+        assert_eq!(&source[string_token.span.start..string_token.span.end], string_token.span.literal);
+    }
+
+    #[test]
+    fn test_non_ascii_identifier_position_after_multibyte_content() {
+        // A multi-byte token earlier in the source must not desync byte
+        // offsets for tokens that follow it.
+        let tokens = tokenize(r#"let café = 1; let after = 2;"#);
+        let names: Vec<String> = tokens
+            .into_iter()
+            .filter_map(|t| match t.kind {
+                TokenKind::Identifier(name) => Some(name),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(names, vec!["café".to_string(), "after".to_string()]);
     }
 }

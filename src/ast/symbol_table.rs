@@ -21,6 +21,7 @@
 
 use crate::ast::types::{DataType, Value};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 /// A single variable binding with its value, type, and mutability.
 #[derive(Debug, Clone)]
@@ -82,22 +83,28 @@ impl Scope {
 /// A lexically scoped symbol table.
 ///
 /// Maintains a stack of [`Scope`]s; the first element is always the global scope.
+///
+/// Each scope is stored behind an `Rc` so cloning a whole `SymbolTable` (done
+/// when a function captures its enclosing scope as a closure, and again on
+/// every call) is O(depth) instead of O(total variables in scope) — scopes
+/// are shared until actually mutated, at which point only that one scope is
+/// copied (`Rc::make_mut`).
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
-    scopes: Vec<Scope>,
+    scopes: Vec<Rc<Scope>>,
 }
 
 impl SymbolTable {
     /// Creates a symbol table with a single global scope.
     pub fn new() -> Self {
         SymbolTable {
-            scopes: vec![Scope::new()], // Start with global scope
+            scopes: vec![Rc::new(Scope::new())], // Start with global scope
         }
     }
 
     /// Pushes a new inner scope onto the stack.
     pub fn enter_scope(&mut self) {
-        self.scopes.push(Scope::new());
+        self.scopes.push(Rc::new(Scope::new()));
     }
 
     /// Pops the current scope.
@@ -122,9 +129,9 @@ impl SymbolTable {
     pub fn define(&mut self, name: String, value: Value, is_mutable: bool) -> Result<(), String> {
         let data_type = value.get_type();
         let symbol = Symbol::new(name.clone(), value, data_type, is_mutable);
-        
+
         if let Some(current_scope) = self.scopes.last_mut() {
-            current_scope.define(name, symbol)
+            Rc::make_mut(current_scope).define(name, symbol)
         } else {
             Err("No active scope".to_string())
         }
@@ -150,9 +157,11 @@ impl SymbolTable {
     ///   type and is not an `Integer → Float` widening.
     /// - `"Variable '…' not found"` if the name is undefined in any scope.
     pub fn assign(&mut self, name: &str, value: Value) -> Result<(), String> {
-        // Search from innermost to outermost scope
+        // Search from innermost to outermost scope. Only the scope that
+        // actually owns `name` is copy-on-write cloned via `Rc::make_mut`.
         for scope in self.scopes.iter_mut().rev() {
-            if let Some(symbol) = scope.get_mut(name) {
+            if scope.contains(name) {
+                let symbol = Rc::make_mut(scope).get_mut(name).unwrap();
                 // Enforce immutability for const variables
                 if !symbol.is_mutable {
                     return Err(format!("Cannot assign to immutable variable '{}'", name));

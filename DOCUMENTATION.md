@@ -626,7 +626,13 @@ let x = 20
 ```
 
 ### Type Mismatch
-Currently, Arc allows type changes in variables, but this may be restricted in future versions.
+Once a variable is declared, its type is fixed. Assigning a value of a different type is rejected,
+except that an `Integer` can be assigned to a `Float` variable (implicit widening).
+```arc
+let x = 10
+x = "hello"
+// Error: Type mismatch: variable 'x' has type Integer, cannot assign String
+```
 
 ---
 
