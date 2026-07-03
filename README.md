@@ -1,8 +1,9 @@
 # Arc Compiler
 
 Arc is a small interpreted expression language implemented in Rust. It includes
-a lexer, precedence-aware parser, scoped symbol table, evaluator, REPL, file
-runner, and diagnostics with source spans and suggestions.
+a lexer, precedence-aware parser, a resolver that statically slot- and
+type-resolves every name before evaluation, an evaluator, REPL, file runner,
+and diagnostics with source spans and suggestions.
 
 [![Docs](https://img.shields.io/badge/docs-online-blue)](https://prajwal-kp-18.github.io/Arc-compiler/arc_compiler/index.html)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -15,7 +16,8 @@ runner, and diagnostics with source spans and suggestions.
 - **Assignment**: `x = x + 5` with mutability and assignment type checks.
 - **Lexical scopes**: Bare blocks, `if` branches, and function calls create nested scopes.
 - **Conditionals**: `if condition { ... } else { ... }` with truthy/falsy condition evaluation.
-- **User-defined functions**: `fn name(arg1, arg2) { return value }`.
+- **User-defined functions**: `fn name(arg1, arg2) { return value }`, with optional
+  parameter type annotations (`fn name(arg1: Int) { ... }`).
 - **Built-in functions**: `print(...)`, `min(...)`, and `max(...)`.
 - **Comments**: Single-line `//` and multi-line `/* ... */`.
 - **REPL and file execution**: Run interactively or execute `.arc` files.
@@ -27,9 +29,12 @@ runner, and diagnostics with source spans and suggestions.
 - `Boolean`
 - `String`
 
-Arc performs runtime type checking. Arithmetic widens `Integer` to `Float` when
-needed, logical contexts use truthiness, and assignments keep the declared
-variable type except for assigning an integer into a float variable.
+Arc's resolver statically type-checks whatever it can infer ahead of
+evaluation, falling back to dynamic checking (a permissive `Any` type, with a
+warning) where it can't — e.g. an untyped parameter. Arithmetic widens
+`Integer` to `Float` when needed, logical contexts use truthiness, and
+assignments keep the declared variable type except for assigning an integer
+into a float variable.
 
 ### Operators
 
@@ -118,17 +123,18 @@ print("max =", max(4, 2, 9, 1))
 
 ## Error Handling
 
-Arc collects parse and runtime diagnostics instead of stopping at the first
-error. Current diagnostics cover:
+Arc collects parse, resolve, and runtime diagnostics instead of stopping at
+the first error. Current diagnostics cover:
 
-- Unknown variables and functions, with close-name suggestions when available.
-- Redeclaration in the same scope.
-- Assignment to immutable `const` bindings.
-- Assignment type mismatches.
-- Invalid operator/type combinations.
-- Division and integer modulo by zero.
-- Invalid function arity and invalid `return` outside functions.
-- Unclosed blocks and malformed declarations.
+- Unknown variables and functions, with close-name suggestions when available (resolve-time).
+- Redeclaration in the same scope (resolve-time).
+- Assignment to immutable `const` bindings (resolve-time).
+- Assignment and function-argument type mismatches (resolve-time).
+- Invalid function arity (resolve-time).
+- Invalid operator/type combinations (runtime, for types the resolver couldn't pin down).
+- Division and integer modulo by zero (runtime — inherently value-dependent).
+- Invalid `return` outside functions (resolve-time).
+- Unclosed blocks and malformed declarations (parse-time).
 
 ## Project Structure
 
@@ -140,9 +146,9 @@ src/
     |-- mod.rs           # AST node definitions and visitor trait
     |-- lexer.rs         # Tokenizer with source spans
     |-- parser.rs        # Recursive descent and precedence climbing parser
+    |-- resolver.rs      # Static slot assignment, type inference, compile-time diagnostics
     |-- evaluator.rs     # Interpreter, functions, blocks, built-ins, diagnostics
     |-- types.rs         # Runtime values, coercion, comparison, truthiness
-    |-- symbol_table.rs  # Lexically scoped variable storage
     `-- diagnostic.rs    # Diagnostic formatting and suggestions
 ```
 
@@ -150,8 +156,10 @@ src/
 
 1. **Lexer** converts source text into tokens.
 2. **Parser** builds an AST from statements and expressions.
-3. **Symbol table** resolves scoped variables and enforces mutability/type rules.
-4. **Evaluator** executes statements, calls functions, and records diagnostics.
+3. **Resolver** statically assigns every variable/function a slot, infers
+   types, and enforces mutability/type/arity rules before evaluation starts.
+4. **Evaluator** executes statements by indexing directly into slots, calls
+   functions, and records any remaining runtime diagnostics.
 
 ## Contributing
 

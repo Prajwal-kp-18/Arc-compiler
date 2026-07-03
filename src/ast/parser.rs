@@ -244,13 +244,16 @@ impl Parser {
         if self.current().map(|t| &t.kind) != Some(&TokenKind::RightParen) {
             loop {
                 let parameter_token = self.consume()?.clone();
-                match &parameter_token.kind {
-                    TokenKind::Identifier(identifier) => parameters.push(identifier.clone()),
+                let param_name = match &parameter_token.kind {
+                    TokenKind::Identifier(identifier) => identifier.clone(),
                     _ => {
                         self.emit_error("Expected parameter name in function declaration", Some(parameter_token.span.clone()));
                         return None;
                     }
-                }
+                };
+
+                let type_annotation = self.parse_optional_type_annotation()?;
+                parameters.push(crate::ast::Param::new(param_name, type_annotation));
 
                 if self.current().map(|t| &t.kind) == Some(&TokenKind::Comma) {
                     self.consume();
@@ -268,6 +271,42 @@ impl Parser {
 
         let body = self.parse_block()?;
         Some(ASTStatement::function_declaration(ASTFunctionDeclaration::new(name, parameters, body)))
+    }
+
+    /// Parses an optional `: TypeName` annotation on a parameter, where
+    /// `TypeName` is a soft keyword (`Int`, `Float`, `Bool`, `String`) —
+    /// not a reserved lexer token, just a plain identifier the parser
+    /// recognizes here. Returns `Some(None)` if there's no `:` at all.
+    fn parse_optional_type_annotation(&mut self) -> Option<Option<crate::ast::types::DataType>> {
+        if self.current().map(|t| &t.kind) != Some(&TokenKind::Colon) {
+            return Some(None);
+        }
+        self.consume(); // consume ':'
+
+        let type_token = self.consume()?.clone();
+        let type_name = match &type_token.kind {
+            TokenKind::Identifier(name) => name.clone(),
+            _ => {
+                self.emit_error("Expected a type name after ':'", Some(type_token.span.clone()));
+                return None;
+            }
+        };
+
+        use crate::ast::types::DataType;
+        match type_name.as_str() {
+            "Int" => Some(Some(DataType::Integer)),
+            "Float" => Some(Some(DataType::Float)),
+            "Bool" => Some(Some(DataType::Boolean)),
+            "String" => Some(Some(DataType::String)),
+            _ => {
+                self.emit_error_with_suggestion(
+                    format!("Unknown type annotation '{}'", type_name),
+                    Some(type_token.span.clone()),
+                    "Expected one of: Int, Float, Bool, String",
+                );
+                None
+            }
+        }
     }
 
     /// Parses `return <expr>`.
@@ -626,12 +665,34 @@ mod tests {
         match &statements[0].kind {
             ASTStatementKind::FunctionDeclaration(func) => {
                 assert_eq!(func.name, "max2");
-                assert_eq!(func.parameters, vec!["a".to_string(), "b".to_string()]);
+                let param_names: Vec<&str> = func.parameters.iter().map(|p| p.name.as_str()).collect();
+                assert_eq!(param_names, vec!["a", "b"]);
+                assert!(func.parameters.iter().all(|p| p.type_annotation.is_none()));
                 assert_eq!(func.body.len(), 1);
                 assert!(matches!(func.body[0].kind, ASTStatementKind::IfStatement(_)));
             }
             _ => panic!("expected a function declaration"),
         }
+    }
+
+    #[test]
+    fn test_typed_parameters() {
+        let (statements, diagnostics) = parse_all("fn add(a: Int, b: Int) { return a + b; }");
+        assert!(diagnostics.is_empty());
+        match &statements[0].kind {
+            ASTStatementKind::FunctionDeclaration(func) => {
+                let types: Vec<_> = func.parameters.iter().map(|p| p.type_annotation).collect();
+                assert_eq!(types, vec![Some(crate::ast::types::DataType::Integer), Some(crate::ast::types::DataType::Integer)]);
+            }
+            _ => panic!("expected a function declaration"),
+        }
+    }
+
+    #[test]
+    fn test_unknown_type_annotation_is_a_parse_error() {
+        let (_, diagnostics) = parse_all("fn f(a: NotAType) { return a; }");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("Unknown type annotation"));
     }
 
     #[test]

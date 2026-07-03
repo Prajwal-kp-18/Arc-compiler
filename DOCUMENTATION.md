@@ -18,7 +18,10 @@ Arc is a lightweight, interpreted expression language designed for learning comp
 
 ### Key Characteristics
 - **Interpreted**: Executes code directly without compilation to machine code
-- **Dynamically typed**: Types are checked at runtime with automatic coercion
+- **Statically resolved, gradually typed**: A resolver pass infers types and catches
+  undeclared-name, redeclaration, mutability, arity, and type-mismatch errors
+  before evaluation starts. Types it can't pin down statically (e.g. an untyped
+  parameter) fall back to a dynamically-checked `Any` type, with a warning.
 - **Expression-oriented**: Most constructs evaluate to values
 - **Interactive REPL**: Test code snippets interactively
 - **File execution**: Run complete programs from `.arc` files
@@ -38,7 +41,7 @@ Converts source code into a stream of tokens.
 - **Literals**: `Number`, `Float`, `Boolean`, `String`
 - **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`
 - **Keywords**: `let`, `const`, `fn`, `return`, `if`, `else`
-- **Delimiters**: `(`, `)`, `,`, `{`, `}`, `;`
+- **Delimiters**: `(`, `)`, `,`, `:`, `{`, `}`, `;`
 - **Special**: `=`, `Identifier`, `EOF`, `Whitespace`, `Bad`
 
 **Features**:
@@ -85,30 +88,44 @@ Builds an Abstract Syntax Tree (AST) using precedence climbing.
 10. Multiplication/Division/Modulo (`*`, `/`, `%`)
 11. Exponentiation (`**`, right-associative)
 
-### 3. Symbol Table
-**Location**: `src/ast/symbol_table.rs`
+### 3. Resolver
+**Location**: `src/ast/resolver.rs`
 
-Manages variable storage and scope.
+Walks the AST once, after parsing and before evaluation, and statically
+resolves every variable and function reference.
 
 **Features**:
-- Variable definition with mutability tracking
-- Type-safe assignment
-- Undefined variable detection
-- Redeclaration prevention
-- Nested lexical scopes for blocks, condition branches, and function calls
+- Assigns every `let`/`const`/parameter a stable slot index (function-frame-relative
+  for locals, a flat space for globals) — the evaluator addresses variables by
+  slot, not by a runtime name lookup
+- Infers a concrete type for every expression using the same widening rules
+  the evaluator's coercion uses, falling back to a dynamically-checked `Any`
+  type (with a warning) where it can't be pinned down statically
+- Resolves function declarations with lexical scoping and hoisting, so
+  sibling functions can call each other regardless of declaration order
+  (forward references and mutual recursion) without a runtime name-lookup stack
+- Catches undeclared-variable, redeclaration, immutable-assignment,
+  type-mismatch, and arity errors **before evaluation starts**, using the
+  same diagnostic text the evaluator used to produce at runtime
+- Nested function declarations do not capture their enclosing function's
+  locals (only their own frame and the global scope are visible) — a
+  documented simplification, not a full closure model
 
 ### 4. Evaluation (Evaluator)
 **Location**: `src/ast/evaluator.rs`
 
-Executes the AST using the Visitor pattern.
+Executes the resolved AST using the Visitor pattern.
 
 **Features**:
-- Type-aware evaluation
-- Automatic type coercion
+- Slot-indexed variable storage (a flat `Vec` per call frame, plus one for
+  globals) instead of a scoped, string-keyed symbol table
+- Automatic type coercion for the runtime arithmetic itself (the Resolver
+  already validated the operation is legal ahead of time)
 - Short-circuit evaluation for logical operators
 - Error collection without stopping execution
 - Built-in function support
-- User-defined function support with closures over the declaration environment
+- User-defined function support; function bodies are registered once (not
+  re-cloned per call)
 
 ---
 
@@ -166,7 +183,7 @@ fn add(a, b) {
     return a + b
 }
 
-fn square(n) {
+fn square(n: Int) {
     return n * n
 }
 
@@ -175,6 +192,13 @@ print(square(7))
 ```
 
 Functions are declared with `fn`, take positional parameters, and may return a value with `return`. A function without an explicit `return` evaluates to the last value produced by its body.
+
+Parameters can optionally carry a type annotation — `n: Int` above — using one
+of the soft-keyword type names `Int`, `Float`, `Bool`, or `String`. An
+annotated parameter is type-checked at the call site before the function ever
+runs; an unannotated one is checked dynamically, same as before type
+annotations existed. Return types are always inferred from the function's
+`return` statements, never annotated.
 
 ### Comments
 
@@ -329,11 +353,13 @@ if <expression> {
 
 ### Function Declaration
 ```
-fn <identifier>(<param1>, <param2>, ...) {
+fn <identifier>(<param1>[: <Type>], <param2>[: <Type>], ...) {
     <statement>
     return <expression>
 }
 ```
+
+`<Type>` is one of `Int`, `Float`, `Bool`, `String`. Annotations are optional per-parameter.
 
 ### Return
 ```
@@ -455,19 +481,29 @@ max("b", "a")    // "b"
 
 ### Type Checking
 
-Arc performs type checking at evaluation time:
+Arc's Resolver performs type checking statically, before evaluation starts,
+wherever it can determine a concrete type:
 
 ```arc
-let x = 10          // Type: Integer
+let x = 10          // Type: Integer, inferred from the initializer
 x = 20              // OK: same type
-x = 3.14            // ERROR: cannot change type
+x = 3.14            // Resolve error: cannot change type
 ```
 
-Type coercion is automatic in mixed-type operations:
+Type coercion is automatic in mixed-type operations, and the widening
+decision itself is made statically by the Resolver:
 
 ```arc
 let result = 5 + 2.5    // OK: 5 promoted to 5.0
 ```
+
+Where a type genuinely can't be determined statically — an untyped function
+parameter with no type-revealing usage, or a recursive function's return type
+with no reachable non-recursive base case — the Resolver assigns it the `Any`
+type instead of failing. `Any` is checked dynamically at runtime, exactly like
+every value was before the Resolver existed, and the Resolver emits a
+non-fatal warning when it falls back to it so the gap is visible rather than
+silent.
 
 ---
 
@@ -549,9 +585,10 @@ If you're using Arc as a library in your Rust project:
 
 #### Execute Code
 ```rust
-use arc_compiler::ast::{Ast, ASTVisitor};
+use arc_compiler::ast::Ast;
 use arc_compiler::ast::lexer::Lexer;
 use arc_compiler::ast::parser::Parser;
+use arc_compiler::ast::resolver::Resolver;
 use arc_compiler::ast::evaluator::ASTEvaluator;
 
 let source = "let x = 10\nx + 5";
@@ -570,32 +607,27 @@ if let Some(stmt) = parser.next_statement() {
     ast.add_statement(stmt);
 }
 
-// Evaluate
-let mut evaluator = ASTEvaluator::new();
-ast.visit(&mut evaluator);
-
-// Check result
-if let Some(value) = evaluator.last_value {
-    println!("Result: {:?}", value);
+// Resolve: statically resolve names/types before evaluation runs
+let mut resolver = Resolver::new();
+resolver.resolve(&ast);
+for diagnostic in &resolver.diagnostics {
+    eprintln!("{}", diagnostic.message);
 }
 
-// Check errors
-for error in evaluator.errors {
-    eprintln!("Error: {}", error);
-}
-```
+// Only evaluate if resolution found no blocking errors
+if !resolver.has_errors() {
+    let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
+    evaluator.execute(&ast);
 
-#### Define Variables Programmatically
-```rust
-use arc_compiler::ast::symbol_table::SymbolTable;
-use arc_compiler::ast::types::Value;
+    // Check result
+    if let Some(value) = evaluator.last_value {
+        println!("Result: {:?}", value);
+    }
 
-let mut table = SymbolTable::new();
-table.define("x".to_string(), Value::Integer(42), true);
-
-match table.get_value("x") {
-    Ok(value) => println!("x = {:?}", value),
-    Err(e) => eprintln!("Error: {}", e),
+    // Check errors
+    for error in evaluator.errors {
+        eprintln!("Error: {}", error);
+    }
 }
 ```
 
@@ -603,7 +635,9 @@ match table.get_value("x") {
 
 ## Error Handling
 
-Arc provides detailed error messages:
+Arc provides detailed error messages. The four categories below are all
+caught by the Resolver before evaluation starts (they used to be runtime-only
+checks) — the message text is unchanged, only the timing improved.
 
 ### Undefined Variable
 ```arc
@@ -684,8 +718,8 @@ Arc is designed for learning, not performance. However:
 
 - **Lexer**: O(n) where n is source length
 - **Parser**: O(n) for expression parsing
-- **Symbol Table**: O(1) average lookup (HashMap-based)
-- **Evaluator**: O(n) where n is AST nodes
+- **Resolver**: O(n) single pass over the AST; variable/function lookups are O(1) slot indexing, no hashing
+- **Evaluator**: O(n) where n is AST nodes; variable access is direct `Vec` indexing by slot
 
 For production use, consider:
 - Bytecode compilation
@@ -696,15 +730,13 @@ For production use, consider:
 
 ## Future Enhancements
 
-See [FUTURE_SCOPE.md](FUTURE_SCOPE.md) for the complete roadmap:
-
 **Coming Soon**:
-- Control flow (`if`, `while`, `for`)
-- Functions and closures
-- Nested scopes
+- `while`/`for` loops
+- Real closures (nested functions capturing enclosing locals)
 - Arrays and tuples
 - More built-in functions
 - Standard library
+- A bytecode compiler and VM, building on the Resolver's slot assignments
 
 ---
 

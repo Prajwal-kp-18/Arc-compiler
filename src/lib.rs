@@ -9,8 +9,12 @@
 //!
 //! 1. [`ast::lexer::Lexer`] — tokenizes source text
 //! 2. [`ast::parser::Parser`] — builds an Abstract Syntax Tree
-//! 3. [`ast::symbol_table::SymbolTable`] — resolves variables and enforces scope
-//! 4. [`ast::evaluator::ASTEvaluator`] — traverses the AST and produces values
+//! 3. [`ast::resolver::Resolver`] — statically resolves every variable/function
+//!    reference to a slot, infers expression types, and catches
+//!    undeclared-name, duplicate-declaration, immutability, arity, and
+//!    type-mismatch errors before evaluation ever starts
+//! 4. [`ast::evaluator::ASTEvaluator`] — traverses the resolved AST and
+//!    produces values, indexing variable storage directly by slot
 //!
 //! ## Quick Start
 //!
@@ -18,6 +22,7 @@
 //! use arc_compiler::ast::{Ast, ASTVisitor};
 //! use arc_compiler::ast::lexer::Lexer;
 //! use arc_compiler::ast::parser::Parser;
+//! use arc_compiler::ast::resolver::Resolver;
 //! use arc_compiler::ast::evaluator::ASTEvaluator;
 //!
 //! let source = "let x = 10";
@@ -34,8 +39,12 @@
 //!     ast.add_statement(stmt);
 //! }
 //!
-//! let mut evaluator = ASTEvaluator::new();
-//! ast.visit(&mut evaluator);
+//! let mut resolver = Resolver::new();
+//! resolver.resolve(&ast);
+//! assert!(!resolver.has_errors());
+//!
+//! let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
+//! evaluator.execute(&ast);
 //! ```
 
 pub mod ast;

@@ -23,11 +23,13 @@ pub mod lexer;
 pub mod parser;
 pub mod evaluator;
 pub mod types;
-pub mod symbol_table;
+pub mod resolver;
 pub mod diagnostic;
 
+use std::cell::Cell;
 use crate::ast::lexer::Token;
-use crate::ast::types::Value;
+use crate::ast::types::{DataType, Value};
+use crate::ast::resolver::{FunctionId, ResolvedBinding, ResolvedCall, SlotIndex};
 
 /// The root of a parsed Arc program, containing an ordered list of statements.
 pub struct Ast {
@@ -372,17 +374,47 @@ impl ASTIfStatement {
     }
 }
 
+/// A single function parameter, with an optional type annotation
+/// (`fn f(a: Int)`) and the slot it's resolved to within the function's frame.
+#[derive(Clone)]
+pub struct Param {
+    pub name: String,
+    pub type_annotation: Option<DataType>,
+    pub slot: Cell<Option<SlotIndex>>,
+}
+
+impl Param {
+    pub fn new(name: String, type_annotation: Option<DataType>) -> Self {
+        Self { name, type_annotation, slot: Cell::new(None) }
+    }
+}
+
 /// A function declaration statement.
 #[derive(Clone)]
 pub struct ASTFunctionDeclaration {
     pub name: String,
-    pub parameters: Vec<String>,
+    pub parameters: Vec<Param>,
     pub body: Vec<ASTStatement>,
+    /// Stable identity assigned by the Resolver, used by call sites instead
+    /// of a runtime name lookup.
+    pub function_id: Cell<Option<FunctionId>>,
+    /// The function's return type, inferred by the Resolver from its
+    /// `return` statements (or `DataType::Any` if it couldn't be pinned down).
+    pub inferred_return_type: Cell<Option<DataType>>,
+    /// Total local slots this function's frame needs, computed by the Resolver.
+    pub frame_size: Cell<Option<u32>>,
 }
 
 impl ASTFunctionDeclaration {
-    pub fn new(name: String, parameters: Vec<String>, body: Vec<ASTStatement>) -> Self {
-        Self { name, parameters, body }
+    pub fn new(name: String, parameters: Vec<Param>, body: Vec<ASTStatement>) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+            function_id: Cell::new(None),
+            inferred_return_type: Cell::new(None),
+            frame_size: Cell::new(None),
+        }
     }
 }
 
@@ -534,11 +566,14 @@ impl ASTUnaryOperator {
 #[derive(Clone)]
 pub struct ASTExpression {
     kind: ASTExpressionKind,
+    /// The expression's static type, filled in by the Resolver
+    /// (`DataType::Any` if it couldn't be statically pinned down).
+    pub resolved_type: Cell<Option<DataType>>,
 }
 
 impl ASTExpression {
     pub fn new(kind: ASTExpressionKind) -> Self {
-        ASTExpression { kind }
+        ASTExpression { kind, resolved_type: Cell::new(None) }
     }
 
     /// Creates a literal expression from a [`Value`].
@@ -579,11 +614,11 @@ impl ASTExpression {
     }
 
     pub fn identifier(name: String, token: Option<Token>) -> Self {
-        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression { name, token }))
+        ASTExpression::new(ASTExpressionKind::Identifier(ASTIdentifierExpression::new(name, token)))
     }
 
     pub fn function_call(name: String, arguments: Vec<ASTExpression>, token: Option<Token>) -> Self {
-        ASTExpression::new(ASTExpressionKind::FunctionCall(ASTFunctionCallExpression { name, arguments, token }))
+        ASTExpression::new(ASTExpressionKind::FunctionCall(ASTFunctionCallExpression::new(name, arguments, token)))
     }
 }
 
@@ -602,6 +637,8 @@ pub struct ASTVariableDeclaration {
     pub is_mutable: bool,
     /// Source span of the declared variable name.
     pub name_span: Option<Token>,
+    /// Where the Resolver placed this declaration (local slot or global slot).
+    pub binding: Cell<Option<ResolvedBinding>>,
 }
 
 impl ASTVariableDeclaration {
@@ -611,6 +648,7 @@ impl ASTVariableDeclaration {
             initializer: Box::new(initializer),
             is_mutable,
             name_span,
+            binding: Cell::new(None),
         }
     }
 }
@@ -621,6 +659,13 @@ pub struct ASTAssignment {
     pub name: String,
     pub value: Box<ASTExpression>,
     pub name_span: Option<Token>,
+    /// The Resolver's binding for the assignment target.
+    pub binding: Cell<Option<ResolvedBinding>>,
+    /// Set by the Resolver when the target is a `Float` and the assigned
+    /// value is a statically-known `Integer` — the explicit, compile-time
+    /// record of a widening decision the evaluator applies without
+    /// re-deriving it from types at runtime.
+    pub needs_float_widen: Cell<bool>,
 }
 
 impl ASTAssignment {
@@ -629,6 +674,8 @@ impl ASTAssignment {
             name,
             value: Box::new(value),
             name_span,
+            binding: Cell::new(None),
+            needs_float_widen: Cell::new(false),
         }
     }
 }
@@ -638,11 +685,13 @@ impl ASTAssignment {
 pub struct ASTIdentifierExpression {
     pub name: String,
     pub token: Option<Token>,
+    /// The Resolver's binding for this reference.
+    pub binding: Cell<Option<ResolvedBinding>>,
 }
 
 impl ASTIdentifierExpression {
     pub fn new(name: String, token: Option<Token>) -> Self {
-        ASTIdentifierExpression { name, token }
+        ASTIdentifierExpression { name, token, binding: Cell::new(None) }
     }
 }
 
@@ -652,10 +701,12 @@ pub struct ASTFunctionCallExpression {
     pub name: String,
     pub arguments: Vec<ASTExpression>,
     pub token: Option<Token>,
+    /// What this call resolves to: a builtin or a user-defined `FunctionId`.
+    pub resolved_call: Cell<Option<ResolvedCall>>,
 }
 
 impl ASTFunctionCallExpression {
     pub fn new(name: String, arguments: Vec<ASTExpression>, token: Option<Token>) -> Self {
-        ASTFunctionCallExpression { name, arguments, token }
+        ASTFunctionCallExpression { name, arguments, token, resolved_call: Cell::new(None) }
     }
 }

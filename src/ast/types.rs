@@ -23,15 +23,18 @@
 
 use std::fmt;
 
-/// The static type of a variable as tracked by the [`SymbolTable`](crate::ast::symbol_table::SymbolTable).
-#[derive(Debug, Clone, PartialEq)]
+/// The static type of a variable or expression, as computed by the
+/// [`Resolver`](crate::ast::resolver::Resolver).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataType {
     Integer,
     Float,
     Boolean,
     String,
-    /// Placeholder for not-yet-known types.
-    Unknown,
+    /// Deliberately dynamic: the Resolver could not statically pin down a
+    /// concrete type (e.g. an untyped parameter with no usage-derived type),
+    /// so this value is checked at runtime instead, same as before Phase 1.
+    Any,
 }
 
 /// A runtime value produced by the evaluator.
@@ -168,7 +171,7 @@ impl fmt::Display for DataType {
             DataType::Float => write!(f, "Float"),
             DataType::Boolean => write!(f, "Boolean"),
             DataType::String => write!(f, "String"),
-            DataType::Unknown => write!(f, "Unknown"),
+            DataType::Any => write!(f, "Any"),
         }
     }
 }

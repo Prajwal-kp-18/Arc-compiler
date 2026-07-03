@@ -96,11 +96,11 @@ fn add(a, b) {
     return a + b
 }
 
-fn square(n) {
+fn square(n: Int) {
     return n * n
 }
 
-fn hypotenuse(a, b) {
+fn hypotenuse(a: Int, b: Int) {
     return (a * a + b * b) ** 0.5
 }
 

@@ -5,7 +5,9 @@ use ast::lexer::Token;
 use ast::lexer::TokenKind;
 use ast::Ast;
 use ast::parser::Parser;
+use ast::resolver::Resolver;
 use ast::evaluator::ASTEvaluator;
+use ast::diagnostic::{Diagnostic, Severity};
 use std::io::{self, Write};
 use std::env;
 use std::fs;
@@ -13,7 +15,7 @@ use std::fs;
 /// Entry point - runs REPL or executes file from command line
 fn main() {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() > 1 {
         // File execution mode
         let filename = &args[1];
@@ -21,6 +23,16 @@ fn main() {
     } else {
         // REPL mode
         run_repl();
+    }
+}
+
+fn print_diagnostics(header: &str, diagnostics: &[&Diagnostic], source: &str) {
+    if diagnostics.is_empty() {
+        return;
+    }
+    eprintln!("\n=== {} ===", header);
+    for diagnostic in diagnostics {
+        eprintln!("{}", diagnostic.format_with_source(source));
     }
 }
 
@@ -33,9 +45,8 @@ fn execute_file(filename: &str) {
             return;
         }
     };
-    
+
     println!("=== Executing {} ===", filename);
-    let mut evaluator = ASTEvaluator::new();
 
     let mut lexer = ast::lexer::Lexer::new(&contents);
     let mut tokens: Vec<Token> = Vec::new();
@@ -58,10 +69,8 @@ fn execute_file(filename: &str) {
                 if parser.diagnostics.is_empty() {
                     eprintln!("Parse error: Invalid syntax in file '{}'.", filename);
                 } else {
-                    eprintln!("\n=== Parse Errors ===");
-                    for diagnostic in &parser.diagnostics {
-                        eprintln!("{}", diagnostic.format_with_source(&contents));
-                    }
+                    let refs: Vec<&Diagnostic> = parser.diagnostics.iter().collect();
+                    print_diagnostics("Parse Errors", &refs, &contents);
                 }
                 return;
             }
@@ -69,20 +78,29 @@ fn execute_file(filename: &str) {
     }
 
     if !parser.diagnostics.is_empty() {
-        eprintln!("\n=== Parse Errors ===");
-        for diagnostic in &parser.diagnostics {
-            eprintln!("{}", diagnostic.format_with_source(&contents));
-        }
+        let refs: Vec<&Diagnostic> = parser.diagnostics.iter().collect();
+        print_diagnostics("Parse Errors", &refs, &contents);
         return;
     }
 
-    ast.visit(&mut evaluator);
-    
+    // Resolve: statically resolve every name/type before evaluation ever runs.
+    let mut resolver = Resolver::new();
+    resolver.resolve(&ast);
+
+    let (errors, warnings): (Vec<&Diagnostic>, Vec<&Diagnostic>) =
+        resolver.diagnostics.iter().partition(|d| d.severity == Severity::Error);
+    print_diagnostics("Resolve Warnings", &warnings, &contents);
+    if resolver.has_errors() {
+        print_diagnostics("Resolve Errors", &errors, &contents);
+        return;
+    }
+
+    let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
+    evaluator.execute(&ast);
+
     if !evaluator.errors.is_empty() {
-        println!("\n=== Errors ===");
-        for diagnostic in &evaluator.errors {
-            eprintln!("{}", diagnostic.format_with_source(&contents));
-        }
+        let refs: Vec<&Diagnostic> = evaluator.errors.iter().collect();
+        print_diagnostics("Errors", &refs, &contents);
     }
 }
 
@@ -97,29 +115,30 @@ fn run_repl() {
     println!("  // This is a comment");
     println!("  const pi = 3.14\n");
 
-    let mut evaluator = ASTEvaluator::new();
+    let mut resolver = Resolver::new();
+    let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
     let stdin = io::stdin();
-    
+
     loop {
         print!(">> ");
         io::stdout().flush().unwrap();
-        
+
         let mut input = String::new();
         match stdin.read_line(&mut input) {
             Ok(_) => {
                 let input = input.trim();
-                
+
                 // Exit commands
                 if input == "exit" || input == "quit" {
                     println!("Session ended. Goodbye.");
                     break;
                 }
-                
+
                 // Skip empty lines
                 if input.is_empty() {
                     continue;
                 }
-                
+
                 // Tokenize
                 let mut lexer = ast::lexer::Lexer::new(input);
                 let mut tokens: Vec<Token> = Vec::new();
@@ -130,34 +149,48 @@ fn run_repl() {
                 // Parse
                 let mut ast: Ast = Ast::new();
                 let mut parser = Parser::new(tokens);
-                
+
                 match parser.next_statement() {
                     Some(statement) => {
                         ast.add_statement(statement);
-                        
-                        // Evaluate
-                        let error_count_before = evaluator.errors.len();
-                        ast.visit(&mut evaluator);
-                        let error_count_after = evaluator.errors.len();
-                        
-                        // Display result
+
                         if !parser.diagnostics.is_empty() {
                             println!("Parse error:");
                             for diagnostic in &parser.diagnostics {
                                 println!("  {}", diagnostic.format_with_source(input));
                             }
-                        } else if error_count_after > error_count_before {
-                            println!("Error:");
-                            for i in error_count_before..error_count_after {
-                                println!("  {}", evaluator.errors[i].format_with_source(input));
-                            }
                         } else {
-                            match &evaluator.last_value {
-                                Some(value) => {
-                                    println!("{:?} : {:?}", value, value.get_type());
-                                }
-                                None => {
-                                    // Statement executed without producing a value
+                            // Resolve this line against the persistent global scope.
+                            let diag_start = resolver.diagnostics.len();
+                            resolver.resolve(&ast);
+                            let new_diagnostics = &resolver.diagnostics[diag_start..];
+                            let has_errors = new_diagnostics.iter().any(|d| d.severity == Severity::Error);
+
+                            for diagnostic in new_diagnostics {
+                                println!("  {}", diagnostic.format_with_source(input));
+                            }
+
+                            if !has_errors {
+                                evaluator.ensure_global_capacity(resolver.global_slot_count());
+
+                                let error_count_before = evaluator.errors.len();
+                                evaluator.execute(&ast);
+                                let error_count_after = evaluator.errors.len();
+
+                                if error_count_after > error_count_before {
+                                    println!("Error:");
+                                    for i in error_count_before..error_count_after {
+                                        println!("  {}", evaluator.errors[i].format_with_source(input));
+                                    }
+                                } else {
+                                    match &evaluator.last_value {
+                                        Some(value) => {
+                                            println!("{:?} : {:?}", value, value.get_type());
+                                        }
+                                        None => {
+                                            // Statement executed without producing a value
+                                        }
+                                    }
                                 }
                             }
                         }

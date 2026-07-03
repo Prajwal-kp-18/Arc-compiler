@@ -56,6 +56,7 @@ pub enum TokenKind {
     LeftParen,
     RightParen,
     Comma,
+    Colon,
     LeftBrace,
     RightBrace,
     // Assignment and keywords
@@ -284,6 +285,7 @@ impl<'o> Lexer<'o> {
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
             ',' => TokenKind::Comma,
+            ':' => TokenKind::Colon,
             '{' => TokenKind::LeftBrace,
             '}' => TokenKind::RightBrace,
             _ => TokenKind::Bad,

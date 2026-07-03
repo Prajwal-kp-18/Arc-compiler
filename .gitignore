@@ -33,7 +33,7 @@ Cargo.lock
 /bindings/
 
 # Extra
-NOTES.md
-FUTURE_SCOPE.md
 examples/*
-OPTIMIZATIONS.md
+
+# Local, untracked notes/design docs
+local-notes/
