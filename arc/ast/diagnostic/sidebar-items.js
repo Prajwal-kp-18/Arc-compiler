@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["DiagnosticKind","Severity"],"fn":["closest_name","levenshtein","line_col_from_offset"],"struct":["Diagnostic"]};

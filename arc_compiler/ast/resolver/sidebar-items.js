@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["BuiltinFn","ResolvedBinding","ResolvedCall"],"struct":["FunctionId","Resolver","SlotIndex"]};
