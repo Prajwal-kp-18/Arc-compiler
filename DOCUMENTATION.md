@@ -30,7 +30,9 @@ Arc is a lightweight, interpreted expression language designed for learning comp
 
 ## Architecture
 
-Arc uses a classic four-stage compilation pipeline:
+Arc uses a classic staged compilation pipeline: lex → parse → resolve, then
+either tree-walking evaluation (the default) or bytecode compilation
+(`--dump-bytecode`; no VM executes it yet).
 
 ### 1. Lexical Analysis (Lexer)
 **Location**: `src/ast/lexer.rs`
@@ -127,6 +129,32 @@ Executes the resolved AST using the Visitor pattern.
 - User-defined function support; function bodies are registered once (not
   re-cloned per call)
 
+### 5. Bytecode Compiler (alternative backend)
+**Location**: `src/bytecode/` (`opcode.rs`, `chunk.rs`, `compiler.rs`, `disassembler.rs`)
+
+Lowers the Resolver-annotated AST into bytecode `Chunk`s — one per function
+plus one for the top-level script. No execution happens yet (a VM is the next
+phase); the output is inspected via the built-in disassembler.
+
+**Features**:
+- Small, generic instruction set (~35 opcodes) dispatching dynamically over
+  the same tagged `Value` enum the evaluator uses
+- Trusts the Resolver completely: reads slot indices, function ids, and
+  resolved bindings straight off the AST — infallible, no error type
+- `++`/`--` and `&&`/`||` desugar to generic get/set/arithmetic/jump
+  sequences instead of dedicated opcodes
+- Statement compilation is stack-neutral; every chunk ends in an explicit
+  `RETURN`, and the implicit-return rule matches the evaluator exactly (only
+  a trailing expression statement produces a value)
+- Per-byte source-offset table in each chunk for error reporting
+- Disassembler prints one line per instruction: offset, source position,
+  mnemonic, decoded operands, and inline constant values
+
+Run it with:
+```bash
+cargo run -- --dump-bytecode program.arc
+```
+
 ---
 
 ## Language Features
@@ -191,7 +219,7 @@ print(add(12, 8))
 print(square(7))
 ```
 
-Functions are declared with `fn`, take positional parameters, and may return a value with `return`. A function without an explicit `return` evaluates to the last value produced by its body.
+Functions are declared with `fn`, take positional parameters, and may return a value with `return`. A function without an explicit `return` evaluates to the value of its **trailing expression statement** — and only that: if the body ends in a `let`, an assignment, a block, or an `if`, the function produces no value, and using its result is a runtime error. (This rule is uniform across the tree-walking evaluator and the bytecode compiler.)
 
 Parameters can optionally carry a type annotation — `n: Int` above — using one
 of the soft-keyword type names `Int`, `Float`, `Bool`, or `String`. An
@@ -688,6 +716,12 @@ cargo build --release
 ./target/release/rust-compiler program.arc
 ```
 
+### Bytecode Disassembly
+```bash
+# Compile to bytecode and print the disassembly (no execution)
+cargo run -- --dump-bytecode program.arc
+```
+
 ### Example REPL Session
 ```
 === Arc Compiler REPL ===
@@ -736,7 +770,7 @@ For production use, consider:
 - Arrays and tuples
 - More built-in functions
 - Standard library
-- A bytecode compiler and VM, building on the Resolver's slot assignments
+- A stack-based VM executing the bytecode the compiler already produces
 
 ---
 

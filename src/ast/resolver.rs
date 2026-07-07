@@ -167,6 +167,13 @@ impl Resolver {
         self.frames[0].next_slot
     }
 
+    /// Total number of function declarations resolved so far — `FunctionId`s
+    /// are dense and 0-based, so this also sizes a `Vec` indexable by them
+    /// (e.g. the bytecode compiler's per-function `Chunk` table).
+    pub fn function_count(&self) -> u32 {
+        self.next_function_id
+    }
+
     pub fn has_errors(&self) -> bool {
         self.diagnostics.iter().any(|d| d.severity == Severity::Error)
     }

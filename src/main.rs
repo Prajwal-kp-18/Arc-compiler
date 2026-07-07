@@ -1,6 +1,7 @@
 //! Arc Compiler - Supports REPL mode and file execution
 
 mod ast;
+mod bytecode;
 use ast::lexer::Token;
 use ast::lexer::TokenKind;
 use ast::Ast;
@@ -12,17 +13,16 @@ use std::io::{self, Write};
 use std::env;
 use std::fs;
 
-/// Entry point - runs REPL or executes file from command line
+/// Entry point - runs REPL, executes a file, or dumps its bytecode
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args().skip(1).collect();
+    let dump_bytecode = args.iter().any(|a| a == "--dump-bytecode");
+    let filename = args.iter().find(|a| a.as_str() != "--dump-bytecode");
 
-    if args.len() > 1 {
-        // File execution mode
-        let filename = &args[1];
-        execute_file(filename);
-    } else {
-        // REPL mode
-        run_repl();
+    match filename {
+        Some(filename) if dump_bytecode => dump_bytecode_for_file(filename),
+        Some(filename) => execute_file(filename),
+        None => run_repl(),
     }
 }
 
@@ -36,19 +36,12 @@ fn print_diagnostics(header: &str, diagnostics: &[&Diagnostic], source: &str) {
     }
 }
 
-/// Reads and executes Arc source file as a complete program
-fn execute_file(filename: &str) {
-    let contents = match fs::read_to_string(filename) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Error reading file '{}': {}", filename, e);
-            return;
-        }
-    };
-
-    println!("=== Executing {} ===", filename);
-
-    let mut lexer = ast::lexer::Lexer::new(&contents);
+/// Lexes, parses, and resolves a whole file, printing parse/resolve
+/// diagnostics along the way. Returns `None` if a blocking error occurred
+/// (evaluation/compilation should not proceed); resolve warnings are
+/// printed but don't block.
+fn parse_and_resolve(filename: &str, contents: &str) -> Option<(Ast, Resolver)> {
+    let mut lexer = ast::lexer::Lexer::new(contents);
     let mut tokens: Vec<Token> = Vec::new();
     while let Some(token) = lexer.next_token() {
         tokens.push(token);
@@ -70,30 +63,49 @@ fn execute_file(filename: &str) {
                     eprintln!("Parse error: Invalid syntax in file '{}'.", filename);
                 } else {
                     let refs: Vec<&Diagnostic> = parser.diagnostics.iter().collect();
-                    print_diagnostics("Parse Errors", &refs, &contents);
+                    print_diagnostics("Parse Errors", &refs, contents);
                 }
-                return;
+                return None;
             }
         }
     }
 
     if !parser.diagnostics.is_empty() {
         let refs: Vec<&Diagnostic> = parser.diagnostics.iter().collect();
-        print_diagnostics("Parse Errors", &refs, &contents);
-        return;
+        print_diagnostics("Parse Errors", &refs, contents);
+        return None;
     }
 
-    // Resolve: statically resolve every name/type before evaluation ever runs.
+    // Resolve: statically resolve every name/type before evaluation/compilation runs.
     let mut resolver = Resolver::new();
     resolver.resolve(&ast);
 
     let (errors, warnings): (Vec<&Diagnostic>, Vec<&Diagnostic>) =
         resolver.diagnostics.iter().partition(|d| d.severity == Severity::Error);
-    print_diagnostics("Resolve Warnings", &warnings, &contents);
+    print_diagnostics("Resolve Warnings", &warnings, contents);
     if resolver.has_errors() {
-        print_diagnostics("Resolve Errors", &errors, &contents);
-        return;
+        print_diagnostics("Resolve Errors", &errors, contents);
+        return None;
     }
+
+    Some((ast, resolver))
+}
+
+/// Reads and executes Arc source file as a complete program
+fn execute_file(filename: &str) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
+        }
+    };
+
+    println!("=== Executing {} ===", filename);
+
+    let Some((ast, resolver)) = parse_and_resolve(filename, &contents) else {
+        return;
+    };
 
     let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
     evaluator.execute(&ast);
@@ -102,6 +114,26 @@ fn execute_file(filename: &str) {
         let refs: Vec<&Diagnostic> = evaluator.errors.iter().collect();
         print_diagnostics("Errors", &refs, &contents);
     }
+}
+
+/// Compiles a file to bytecode and prints its disassembly. No execution —
+/// there's no VM yet (Phase 3).
+fn dump_bytecode_for_file(filename: &str) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
+        }
+    };
+
+    let Some((ast, resolver)) = parse_and_resolve(filename, &contents) else {
+        return;
+    };
+
+    let compiler = bytecode::compiler::BytecodeCompiler::new(resolver.function_count());
+    let program = compiler.compile(&ast);
+    print!("{}", bytecode::disassembler::disassemble_program(&program));
 }
 
 /// Interactive Read-Eval-Print Loop for testing expressions

@@ -449,9 +449,9 @@ pub enum ASTExpressionKind {
 /// A binary expression node: `left operator right`.
 #[derive(Clone)]
 pub struct ASTBinaryExpression {
-    left: Box<ASTExpression>,
-    operator: ASTBinaryOperator,
-    right: Box<ASTExpression>,
+    pub left: Box<ASTExpression>,
+    pub operator: ASTBinaryOperator,
+    pub right: Box<ASTExpression>,
 }
 
 /// A binary operator with its kind and the originating token.
@@ -532,21 +532,21 @@ pub struct ASTNumberExpression {
 /// A parenthesized sub-expression: `( expr )`.
 #[derive(Clone)]
 pub struct ASTParanthesizedExpression {
-    expression: Box<ASTExpression>,
+    pub expression: Box<ASTExpression>,
 }
 
 /// A unary expression: `operator operand`.
 #[derive(Clone)]
 pub struct ASTUnaryExpression {
-    operator: ASTUnaryOperator,
-    operand: Box<ASTExpression>,
+    pub operator: ASTUnaryOperator,
+    pub operand: Box<ASTExpression>,
 }
 
 /// A postfix unary expression: `operand operator` (for ++ and --).
 #[derive(Clone)]
 pub struct ASTPostfixUnaryExpression {
-    operand: Box<ASTExpression>,
-    operator: ASTUnaryOperator,
+    pub operand: Box<ASTExpression>,
+    pub operator: ASTUnaryOperator,
 }
 
 #[derive(Clone)]
@@ -565,7 +565,7 @@ impl ASTUnaryOperator {
 /// An expression node.
 #[derive(Clone)]
 pub struct ASTExpression {
-    kind: ASTExpressionKind,
+    pub kind: ASTExpressionKind,
     /// The expression's static type, filled in by the Resolver
     /// (`DataType::Any` if it couldn't be statically pinned down).
     pub resolved_type: Cell<Option<DataType>>,

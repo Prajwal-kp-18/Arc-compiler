@@ -654,6 +654,11 @@ impl ASTVisitor for ASTEvaluator {
                 self.add_error_at(format!("Failed to evaluate initializer for variable '{}'", decl.name), span);
             }
         }
+        // A declaration is a statement, not an expression: it must not leak
+        // its initializer's value as a function's implicit return (matching
+        // if/block/fn-decl, and what the Resolver already assumes — only a
+        // trailing *expression* statement contributes an implicit return).
+        self.last_value = None;
     }
 
     /// Registration happens in [`ASTEvaluator::hoist_functions`], run once
@@ -700,6 +705,9 @@ impl ASTVisitor for ASTEvaluator {
                 self.add_error_at(format!("Failed to evaluate value for assignment to '{}'", assign.name), span);
             }
         }
+        // Same reasoning as visit_variable_declaration: a statement, not an
+        // expression, must not leak its value as an implicit return.
+        self.last_value = None;
     }
 
     fn visit_if_statement(&mut self, if_stmt: &ASTIfStatement) {
@@ -1027,5 +1035,39 @@ mod tests {
         let result = run("let g = 41; fn outer() { fn inner() { return g + 1; } return inner(); } outer();");
         assert!(result.errors.is_empty(), "{:?}", result.errors);
         assert_eq!(result.last_value, Some(Value::Integer(42)));
+    }
+
+    // -- Implicit return (no explicit `return` statement) --
+    //
+    // Only a trailing *expression* statement contributes an implicit return
+    // value — matching what the Resolver already assumes for return-type
+    // inference. A function ending in `let`/`const`/assignment produces no
+    // value, same as one ending in a bare block or `if`; this is deliberate
+    // and load-bearing for Phase 3 (tree-walker and VM must agree here).
+
+    #[test]
+    fn test_implicit_return_from_trailing_expression() {
+        let result = run("fn f() { 7; } f();");
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(7)));
+    }
+
+    #[test]
+    fn test_no_implicit_return_from_trailing_declaration_or_assignment() {
+        for body in ["let x = 42;", "let y = 0; y = 99;"] {
+            let source = format!("fn f() {{ {} }} print(f());", body);
+            let result = run(&source);
+            assert_eq!(result.errors.len(), 1, "source: {}, errors: {:?}", source, result.errors);
+            assert!(result.errors[0].contains("Failed to evaluate argument"), "{:?}", result.errors);
+        }
+    }
+
+    #[test]
+    fn test_no_implicit_return_from_trailing_block_or_if() {
+        for body in ["let z = 1; { let w = 2; }", "if true { let a = 1; }"] {
+            let source = format!("fn f() {{ {} }} print(f());", body);
+            let result = run(&source);
+            assert_eq!(result.errors.len(), 1, "source: {}, errors: {:?}", source, result.errors);
+        }
     }
 }
