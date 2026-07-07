@@ -1,7 +1,8 @@
 //! Golden-suite backend parity: every program here must produce
 //! byte-identical stdout/stderr whether executed by the tree-walking
-//! evaluator or the bytecode VM — the Phase 3 exit criterion, checked
-//! end-to-end through the real CLI binary.
+//! evaluator, the bytecode VM, or the optimizing IR pipeline (`--opt`) —
+//! the Phase 3/4 exit criteria, checked end-to-end through the real CLI
+//! binary.
 
 use std::fs;
 use std::process::Command;
@@ -48,10 +49,17 @@ const PROGRAMS: &[(&str, &str)] = &[
     ),
 ];
 
-fn run(exe: &str, file: &std::path::Path, backend: &str) -> (String, String, bool) {
+/// The three execution modes that must agree, as CLI argument sets.
+const MODES: &[(&str, &str)] = &[
+    ("tree-walk", "--backend=tree-walk"),
+    ("vm", "--backend=vm"),
+    ("opt", "--opt"),
+];
+
+fn run(exe: &str, file: &std::path::Path, flag: &str) -> (String, String, bool) {
     let output = Command::new(exe)
         .arg(file)
-        .arg(format!("--backend={}", backend))
+        .arg(flag)
         .output()
         .expect("failed to launch arc binary");
     (
@@ -71,15 +79,18 @@ fn golden_suite_is_identical_on_both_backends() {
         let file = dir.join(format!("{}.arc", name));
         fs::write(&file, source).expect("failed to write program");
 
-        let (tree_out, tree_err, tree_ok) = run(exe, &file, "tree-walk");
-        let (vm_out, vm_err, vm_ok) = run(exe, &file, "vm");
-
-        assert!(tree_ok && vm_ok, "{}: non-zero exit (tree: {}, vm: {})", name, tree_ok, vm_ok);
-        assert_eq!(tree_out, vm_out, "{}: stdout diverged", name);
-        assert_eq!(tree_err, vm_err, "{}: stderr diverged", name);
-        // A golden program actually prints something — guards against both
-        // backends "agreeing" by silently doing nothing.
+        let (tree_out, tree_err, tree_ok) = run(exe, &file, MODES[0].1);
+        assert!(tree_ok, "{}: non-zero exit on tree-walk", name);
+        // A golden program actually prints something — guards against all
+        // modes "agreeing" by silently doing nothing.
         assert!(tree_out.lines().count() > 1, "{}: produced no output", name);
+
+        for (mode, flag) in &MODES[1..] {
+            let (out, err, ok) = run(exe, &file, flag);
+            assert!(ok, "{}: non-zero exit on {}", name, mode);
+            assert_eq!(tree_out, out, "{}: stdout diverged on {}", name, mode);
+            assert_eq!(tree_err, err, "{}: stderr diverged on {}", name, mode);
+        }
     }
 }
 
@@ -90,11 +101,14 @@ fn demo_arc_is_identical_on_both_backends() {
     let exe = env!("CARGO_BIN_EXE_arc");
     let demo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/demo.arc");
 
-    let (tree_out, tree_err, tree_ok) = run(exe, &demo, "tree-walk");
-    let (vm_out, vm_err, vm_ok) = run(exe, &demo, "vm");
-
-    assert!(tree_ok && vm_ok);
-    assert_eq!(tree_out, vm_out, "demo.arc: stdout diverged");
-    assert_eq!(tree_err, vm_err, "demo.arc: stderr diverged");
+    let (tree_out, tree_err, tree_ok) = run(exe, &demo, MODES[0].1);
+    assert!(tree_ok);
     assert!(tree_out.contains("Demo Complete"));
+
+    for (mode, flag) in &MODES[1..] {
+        let (out, err, ok) = run(exe, &demo, flag);
+        assert!(ok, "demo.arc: non-zero exit on {}", mode);
+        assert_eq!(tree_out, out, "demo.arc: stdout diverged on {}", mode);
+        assert_eq!(tree_err, err, "demo.arc: stderr diverged on {}", mode);
+    }
 }

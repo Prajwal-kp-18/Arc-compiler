@@ -79,7 +79,10 @@ impl<'a> VM<'a> {
     /// Executes the whole program. Runtime errors land in
     /// [`VM::errors`]; the script's implicit result in [`VM::last_value`].
     pub fn run(&mut self) {
-        self.frames.push(Frame { function: None, ip: 0, locals: Vec::new() });
+        // Script-frame locals exist only for IR-pipeline programs (spilled
+        // registers); zero-sized for directly-compiled bytecode.
+        let script_locals = vec![Value::Integer(0); self.program.script_frame_size as usize];
+        self.frames.push(Frame { function: None, ip: 0, locals: script_locals });
         if let Err((message, offset)) = self.execute() {
             let span = TextSpan::new(offset as usize, offset as usize + 1, String::new());
             self.errors.push(Diagnostic::new(DiagnosticKind::RuntimeError, message, Some(span)));

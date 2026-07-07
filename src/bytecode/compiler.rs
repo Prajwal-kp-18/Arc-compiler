@@ -24,6 +24,10 @@ use crate::bytecode::opcode::OpCode;
 pub struct CompiledProgram {
     pub script: Chunk,
     pub functions: Vec<CompiledFunction>,
+    /// Local slots the *script* frame needs. Zero for directly-compiled
+    /// programs (script variables are globals); non-zero when the IR
+    /// pipeline spills the script's virtual registers to frame slots.
+    pub script_frame_size: u32,
 }
 
 /// A function's chunk plus the metadata the VM needs to call it. No arity
@@ -65,7 +69,7 @@ impl BytecodeCompiler {
         self.chunk_stack.push(Chunk::new());
         self.compile_body(&ast.statements);
         let script = self.chunk_stack.pop().expect("script chunk was just pushed");
-        CompiledProgram { script, functions: self.functions }
+        CompiledProgram { script, functions: self.functions, script_frame_size: 0 }
     }
 
     fn current(&mut self) -> &mut Chunk {

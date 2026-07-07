@@ -33,7 +33,10 @@ Arc is a lightweight, interpreted expression language designed for learning comp
 Arc uses a classic staged compilation pipeline: lex → parse → resolve, then
 one of two interchangeable execution backends — the tree-walking evaluator
 (the default) or the bytecode compiler + virtual machine (`--backend=vm`).
-Both backends are held to byte-identical output on a golden test suite.
+An optional optimizing IR pipeline (`--opt`) inserts a three-address-code
+IR with constant folding, dead code elimination, and common subexpression
+elimination between the resolved AST and the VM. All execution modes are
+held to byte-identical output on a golden test suite.
 
 ### 1. Lexical Analysis (Lexer)
 **Location**: `src/ast/lexer.rs`
@@ -172,6 +175,33 @@ verified execution engine (`--backend=vm`).
   identical behavior on error-free programs
 - Meaningfully faster than the tree-walker: ~1.7× on a recursive-fibonacci
   benchmark (`examples/bench.arc`)
+
+### 7. Optimizing IR (optional pipeline stage)
+**Location**: `src/ir/` (`instr.rs`, `lower.rs`, `passes.rs`, `dump.rs`, `to_bytecode.rs`)
+
+With `--opt`, the resolved AST lowers to a three-address-code IR (virtual
+registers, basic blocks, explicit control-flow graph), runs a pass pipeline,
+then lowers back to bytecode for the VM to execute.
+
+**Passes** (each preserves behavior *including runtime errors* — a fold that
+would error doesn't fold, and only provably non-erroring instructions are
+eliminated or deduplicated):
+- **Constant folding** — evaluates constant expressions at compile time via
+  the same shared arithmetic both backends execute; constant branch
+  conditions turn into unconditional jumps
+- **Dead code elimination** — deletes pure instructions with unused results
+  and blocks unreachable from entry
+- **Common subexpression elimination** (block-local) — reuses the result of
+  a repeated computation instead of recomputing it
+
+Inspect the IR before and after optimization:
+```bash
+cargo run -- --dump-ir program.arc       # after lowering
+cargo run -- --dump-ir=opt program.arc   # after the pass pipeline
+```
+
+On a constant-heavy program the pipeline reduces the IR by ~70%; the output
+is verified byte-identical to the unoptimized backends by the golden suite.
 
 ---
 
@@ -741,6 +771,9 @@ cargo run -- program.arc --backend=tree-walk
 
 # Bytecode VM — same output, faster
 cargo run -- program.arc --backend=vm
+
+# Optimizing IR pipeline (fold/DCE/CSE), executed on the VM
+cargo run -- program.arc --opt
 ```
 
 ### Bytecode Disassembly
@@ -798,9 +831,7 @@ For production use, consider:
 - Arrays and tuples
 - More built-in functions
 - Standard library
-- An optimizing IR (constant folding, dead code elimination) between the
-  resolved AST and codegen
-- A native backend (LLVM or Cranelift)
+- A native backend (LLVM or Cranelift) consuming the optimizing IR
 
 ---
 

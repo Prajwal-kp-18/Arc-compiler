@@ -73,7 +73,13 @@ impl Chunk {
     /// Patches a jump emitted at `operand_at` (as returned by
     /// [`Chunk::emit_jump`]) to land at the current end of the chunk.
     pub fn patch_jump(&mut self, operand_at: usize) {
-        let distance = self.code.len() - (operand_at + 2);
+        self.patch_jump_to(operand_at, self.code.len());
+    }
+
+    /// Patches a jump emitted at `operand_at` to land at `target` (a code
+    /// offset at or after the operand — jumps are forward-only).
+    pub fn patch_jump_to(&mut self, operand_at: usize, target: usize) {
+        let distance = target - (operand_at + 2);
         let bytes = u16::try_from(distance).expect("jump distance exceeded u16::MAX bytes").to_be_bytes();
         self.code[operand_at] = bytes[0];
         self.code[operand_at + 1] = bytes[1];

@@ -2,6 +2,7 @@
 
 mod ast;
 mod bytecode;
+mod ir;
 use ast::lexer::Token;
 use ast::lexer::TokenKind;
 use ast::Ast;
@@ -21,20 +22,29 @@ enum Backend {
     Vm,
 }
 
-/// Entry point - runs REPL, executes a file (`--backend=tree-walk|vm`), or
-/// dumps its bytecode (`--dump-bytecode`)
+/// Entry point - runs REPL, executes a file (`--backend=tree-walk|vm`,
+/// optionally `--opt` for the optimizing IR pipeline), dumps its bytecode
+/// (`--dump-bytecode`), or dumps its IR (`--dump-ir`, `--dump-ir=opt`)
 fn main() {
-    let mut backend = Backend::TreeWalk;
+    let mut backend: Option<Backend> = None;
+    let mut opt = false;
     let mut dump_bytecode = false;
+    let mut dump_ir: Option<bool> = None;
     let mut filename = None;
 
     for arg in env::args().skip(1) {
         if arg == "--dump-bytecode" {
             dump_bytecode = true;
+        } else if arg == "--opt" {
+            opt = true;
+        } else if arg == "--dump-ir" {
+            dump_ir = Some(false);
+        } else if arg == "--dump-ir=opt" {
+            dump_ir = Some(true);
         } else if let Some(name) = arg.strip_prefix("--backend=") {
             backend = match name {
-                "tree-walk" => Backend::TreeWalk,
-                "vm" => Backend::Vm,
+                "tree-walk" => Some(Backend::TreeWalk),
+                "vm" => Some(Backend::Vm),
                 other => {
                     eprintln!("Unknown backend '{}' (expected 'tree-walk' or 'vm')", other);
                     return;
@@ -45,9 +55,16 @@ fn main() {
         }
     }
 
+    if opt && backend == Some(Backend::TreeWalk) {
+        eprintln!("--opt runs on the VM; it cannot be combined with --backend=tree-walk");
+        return;
+    }
+
     match filename {
         Some(filename) if dump_bytecode => dump_bytecode_for_file(&filename),
-        Some(filename) => execute_file(&filename, backend),
+        Some(filename) if dump_ir.is_some() => dump_ir_for_file(&filename, dump_ir.unwrap()),
+        Some(filename) if opt => execute_file_optimized(&filename),
+        Some(filename) => execute_file(&filename, backend.unwrap_or(Backend::TreeWalk)),
         None => run_repl(),
     }
 }
@@ -154,6 +171,59 @@ fn execute_file(filename: &str, backend: Backend) {
         let refs: Vec<&Diagnostic> = errors.iter().collect();
         print_diagnostics("Errors", &refs, &contents);
     }
+}
+
+/// Executes a file through the optimizing IR pipeline:
+/// AST → IR → fold/DCE/CSE → bytecode → VM. Must produce output identical
+/// to both plain backends (gated by `tests/golden.rs`).
+fn execute_file_optimized(filename: &str) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
+        }
+    };
+
+    println!("=== Executing {} ===", filename);
+
+    let Some((ast, resolver)) = parse_and_resolve(filename, &contents) else {
+        return;
+    };
+
+    let mut program = ir::lower::IrLowering::new(resolver.function_count()).lower(&ast);
+    ir::passes::optimize(&mut program);
+    let compiled = ir::to_bytecode::program_to_bytecode(&program);
+    let mut vm = bytecode::vm::VM::new(&compiled, resolver.global_slot_count());
+    vm.run();
+
+    if !vm.errors.is_empty() {
+        let refs: Vec<&Diagnostic> = vm.errors.iter().collect();
+        print_diagnostics("Errors", &refs, &contents);
+    }
+}
+
+/// Compiles a file to IR and prints it — post-lowering by default, or after
+/// the optimization pipeline with `--dump-ir=opt`. The diff between the two
+/// is the "show your work" artifact for the optimization passes.
+fn dump_ir_for_file(filename: &str, optimized: bool) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
+        }
+    };
+
+    let Some((ast, resolver)) = parse_and_resolve(filename, &contents) else {
+        return;
+    };
+
+    let mut program = ir::lower::IrLowering::new(resolver.function_count()).lower(&ast);
+    if optimized {
+        ir::passes::optimize(&mut program);
+    }
+    print!("{}", ir::dump::dump_program(&program));
 }
 
 /// Compiles a file to bytecode and prints its disassembly, without

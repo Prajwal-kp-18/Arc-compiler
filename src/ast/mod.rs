@@ -488,7 +488,7 @@ impl ASTBinaryOperator {
 }
 
 /// All binary operators supported by Arc.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ASTBinaryOperatorKind {
     Plus,
     Minus,
