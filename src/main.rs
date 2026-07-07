@@ -13,15 +13,41 @@ use std::io::{self, Write};
 use std::env;
 use std::fs;
 
-/// Entry point - runs REPL, executes a file, or dumps its bytecode
+/// Which execution engine runs the program. Both must produce identical
+/// output on the golden suite (see `tests/golden.rs`).
+#[derive(Clone, Copy, PartialEq)]
+enum Backend {
+    TreeWalk,
+    Vm,
+}
+
+/// Entry point - runs REPL, executes a file (`--backend=tree-walk|vm`), or
+/// dumps its bytecode (`--dump-bytecode`)
 fn main() {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let dump_bytecode = args.iter().any(|a| a == "--dump-bytecode");
-    let filename = args.iter().find(|a| a.as_str() != "--dump-bytecode");
+    let mut backend = Backend::TreeWalk;
+    let mut dump_bytecode = false;
+    let mut filename = None;
+
+    for arg in env::args().skip(1) {
+        if arg == "--dump-bytecode" {
+            dump_bytecode = true;
+        } else if let Some(name) = arg.strip_prefix("--backend=") {
+            backend = match name {
+                "tree-walk" => Backend::TreeWalk,
+                "vm" => Backend::Vm,
+                other => {
+                    eprintln!("Unknown backend '{}' (expected 'tree-walk' or 'vm')", other);
+                    return;
+                }
+            };
+        } else {
+            filename = Some(arg);
+        }
+    }
 
     match filename {
-        Some(filename) if dump_bytecode => dump_bytecode_for_file(filename),
-        Some(filename) => execute_file(filename),
+        Some(filename) if dump_bytecode => dump_bytecode_for_file(&filename),
+        Some(filename) => execute_file(&filename, backend),
         None => run_repl(),
     }
 }
@@ -91,8 +117,10 @@ fn parse_and_resolve(filename: &str, contents: &str) -> Option<(Ast, Resolver)> 
     Some((ast, resolver))
 }
 
-/// Reads and executes Arc source file as a complete program
-fn execute_file(filename: &str) {
+/// Reads and executes Arc source file as a complete program, on the chosen
+/// backend. Output (including runtime error rendering) must be identical
+/// across backends for error-free programs.
+fn execute_file(filename: &str, backend: Backend) {
     let contents = match fs::read_to_string(filename) {
         Ok(c) => c,
         Err(e) => {
@@ -107,17 +135,29 @@ fn execute_file(filename: &str) {
         return;
     };
 
-    let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
-    evaluator.execute(&ast);
+    let errors: Vec<Diagnostic> = match backend {
+        Backend::TreeWalk => {
+            let mut evaluator = ASTEvaluator::new(resolver.global_slot_count());
+            evaluator.execute(&ast);
+            evaluator.errors
+        }
+        Backend::Vm => {
+            let compiler = bytecode::compiler::BytecodeCompiler::new(resolver.function_count());
+            let program = compiler.compile(&ast);
+            let mut vm = bytecode::vm::VM::new(&program, resolver.global_slot_count());
+            vm.run();
+            vm.errors
+        }
+    };
 
-    if !evaluator.errors.is_empty() {
-        let refs: Vec<&Diagnostic> = evaluator.errors.iter().collect();
+    if !errors.is_empty() {
+        let refs: Vec<&Diagnostic> = errors.iter().collect();
         print_diagnostics("Errors", &refs, &contents);
     }
 }
 
-/// Compiles a file to bytecode and prints its disassembly. No execution —
-/// there's no VM yet (Phase 3).
+/// Compiles a file to bytecode and prints its disassembly, without
+/// executing it (use `--backend=vm` to run the bytecode).
 fn dump_bytecode_for_file(filename: &str) {
     let contents = match fs::read_to_string(filename) {
         Ok(c) => c,

@@ -21,6 +21,7 @@
 //! | `false` / `0` / `0.0` / `""` | no |
 //! | everything else | yes |
 
+use crate::ast::ASTBinaryOperatorKind;
 use std::fmt;
 
 /// The static type of a variable or expression, as computed by the
@@ -35,6 +36,10 @@ pub enum DataType {
     /// concrete type (e.g. an untyped parameter with no usage-derived type),
     /// so this value is checked at runtime instead, same as before Phase 1.
     Any,
+    /// The type of [`Value::Unit`] — "no value". Never inferred for a
+    /// variable or parameter; only shows up in runtime error messages when a
+    /// valueless result (e.g. `print(...)`'s) is misused.
+    Unit,
 }
 
 /// A runtime value produced by the evaluator.
@@ -46,6 +51,12 @@ pub enum Value {
     Float(f64),
     Boolean(bool),
     String(String),
+    /// "No value": what `print(...)` and a fall-off-the-end function body
+    /// with no trailing expression produce. Exists so the bytecode VM has a
+    /// real stack value to represent "nothing" — the tree-walking evaluator
+    /// represents the same idea as `last_value = None` and never stores
+    /// `Unit` anywhere. Any operation on `Unit` is a runtime error.
+    Unit,
 }
 
 impl Value {
@@ -56,6 +67,7 @@ impl Value {
             Value::Float(_) => DataType::Float,
             Value::Boolean(_) => DataType::Boolean,
             Value::String(_) => DataType::String,
+            Value::Unit => DataType::Unit,
         }
     }
 
@@ -88,6 +100,7 @@ impl Value {
             Value::Integer(i) => *i != 0,
             Value::Float(f) => *f != 0.0,
             Value::String(s) => !s.is_empty(),
+            Value::Unit => false,
         }
     }
 
@@ -101,6 +114,7 @@ impl Value {
             Value::Float(f) => Ok(*f as i64),
             Value::Boolean(b) => Ok(if *b { 1 } else { 0 }),
             Value::String(_) => Err("Cannot convert string to integer for bitwise operations".to_string()),
+            Value::Unit => Err("Cannot convert unit to integer for bitwise operations".to_string()),
         }
     }
 
@@ -160,6 +174,7 @@ impl fmt::Display for Value {
             Value::Float(fl) => write!(f, "{}", fl),
             Value::Boolean(b) => write!(f, "{}", b),
             Value::String(s) => write!(f, "{}", s),
+            Value::Unit => write!(f, "()"),
         }
     }
 }
@@ -172,6 +187,97 @@ impl fmt::Display for DataType {
             DataType::Boolean => write!(f, "Boolean"),
             DataType::String => write!(f, "String"),
             DataType::Any => write!(f, "Any"),
+            DataType::Unit => write!(f, "Unit"),
         }
+    }
+}
+
+/// Applies a (non-logical) binary operator to two runtime values — the
+/// single source of truth for Arc's binary-operation semantics and error
+/// messages, shared by the tree-walking evaluator and the bytecode VM so the
+/// two backends cannot drift apart.
+///
+/// `&&`/`||` are excluded: they short-circuit, so each backend handles them
+/// in its own control flow (the evaluator skips the right operand; the VM
+/// compiles them to jumps).
+pub fn apply_binary(op: &ASTBinaryOperatorKind, left: &Value, right: &Value) -> Result<Value, String> {
+    use ASTBinaryOperatorKind::*;
+    match op {
+        Plus => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a + b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
+            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            _ => Err(format!("Cannot add {:?} and {:?}", left.get_type(), right.get_type())),
+        },
+        Minus => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a - b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a - b)),
+            _ => Err(format!("Cannot subtract {:?} from {:?}", right.get_type(), left.get_type())),
+        },
+        Multiply => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a * b)),
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a * b)),
+            _ => Err(format!("Cannot multiply {:?} and {:?}", left.get_type(), right.get_type())),
+        },
+        Divide => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => {
+                if b == 0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Integer(a / b))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => {
+                if b == 0.0 {
+                    Err("Division by zero".to_string())
+                } else {
+                    Ok(Value::Float(a / b))
+                }
+            }
+            _ => Err(format!("Cannot divide {:?} by {:?}", left.get_type(), right.get_type())),
+        },
+        Modulo => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => {
+                if b == 0 {
+                    Err("Modulo by zero".to_string())
+                } else {
+                    Ok(Value::Integer(a % b))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a % b)),
+            _ => Err(format!("Cannot compute modulo of {:?} and {:?}", left.get_type(), right.get_type())),
+        },
+        Exponentiation => match Value::coerce_to_common_type(left, right)? {
+            (Value::Integer(a), Value::Integer(b)) => {
+                // Negative exponent requires float result (e.g., 2^-1 = 0.5)
+                if b < 0 {
+                    Ok(Value::Float((a as f64).powf(b as f64)))
+                } else {
+                    Ok(Value::Integer(a.pow(b as u32)))
+                }
+            }
+            (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a.powf(b))),
+            _ => Err(format!("Cannot exponentiate {:?} and {:?}", left.get_type(), right.get_type())),
+        },
+        // Bitwise operations only work on integers
+        BitwiseAnd => bitwise(left, right, "Bitwise AND requires integer operands", |l, r| l & r),
+        BitwiseOr => bitwise(left, right, "Bitwise OR requires integer operands", |l, r| l | r),
+        BitwiseXor => bitwise(left, right, "Bitwise XOR requires integer operands", |l, r| l ^ r),
+        LeftShift => bitwise(left, right, "Left shift requires integer operands", |l, r| l << r),
+        RightShift => bitwise(left, right, "Right shift requires integer operands", |l, r| l >> r),
+        Equal => Ok(Value::Boolean(left.equals(right)?)),
+        NotEqual => Ok(Value::Boolean(!left.equals(right)?)),
+        Less => Ok(Value::Boolean(left.compare(right)? == std::cmp::Ordering::Less)),
+        Greater => Ok(Value::Boolean(left.compare(right)? == std::cmp::Ordering::Greater)),
+        LessEqual => Ok(Value::Boolean(left.compare(right)? != std::cmp::Ordering::Greater)),
+        GreaterEqual => Ok(Value::Boolean(left.compare(right)? != std::cmp::Ordering::Less)),
+        LogicalAnd | LogicalOr => unreachable!("logical operators short-circuit; handled per-backend"),
+    }
+}
+
+fn bitwise(left: &Value, right: &Value, err: &str, f: impl Fn(i64, i64) -> i64) -> Result<Value, String> {
+    match (left.to_integer(), right.to_integer()) {
+        (Ok(l), Ok(r)) => Ok(Value::Integer(f(l, r))),
+        _ => Err(err.to_string()),
     }
 }

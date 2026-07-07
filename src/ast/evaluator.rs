@@ -32,7 +32,7 @@
 
 use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement, ASTStatement, ASTStatementKind, ASTExpressionKind, Ast};
 use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
-use crate::ast::types::Value;
+use crate::ast::types::{apply_binary, Value};
 use crate::ast::lexer::TextSpan;
 use crate::ast::resolver::{BuiltinFn, ResolvedBinding, ResolvedCall, SlotIndex};
 use std::collections::HashMap;
@@ -79,8 +79,9 @@ pub struct ASTEvaluator {
 impl ASTEvaluator {
     /// Maximum function call nesting depth before we bail with a diagnostic
     /// instead of overflowing the host stack (Arc recursion runs directly on
-    /// Rust's call stack via the visitor).
-    const MAX_CALL_DEPTH: usize = 200;
+    /// Rust's call stack via the visitor). Public so the bytecode VM enforces
+    /// the same limit with the same error message.
+    pub const MAX_CALL_DEPTH: usize = 200;
 
     /// Creates a new evaluator. `global_slot_count` comes from
     /// [`Resolver::global_slot_count`](crate::ast::resolver::Resolver::global_slot_count)
@@ -295,240 +296,12 @@ impl ASTVisitor for ASTEvaluator {
             }
         };
 
-        self.last_value = match expr.operator.kind {
-            ASTBinaryOperatorKind::Plus => {
-                // Try to coerce operands to compatible types (e.g., int + float -> float + float)
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a + b)),
-                        (Value::Float(a), Value::Float(b)) => Some(Value::Float(a + b)),
-                        (Value::String(a), Value::String(b)) => Some(Value::String(format!("{}{}", a, b))),
-                        _ => {
-                            self.add_error_at(format!("Cannot add {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Minus => {
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a - b)),
-                        (Value::Float(a), Value::Float(b)) => Some(Value::Float(a - b)),
-                        _ => {
-                            self.add_error_at(format!("Cannot subtract {:?} from {:?}", right.get_type(), left.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Multiply => {
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => Some(Value::Integer(a * b)),
-                        (Value::Float(a), Value::Float(b)) => Some(Value::Float(a * b)),
-                        _ => {
-                            self.add_error_at(format!("Cannot multiply {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Divide => {
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => {
-                            // Check for division by zero at runtime
-                            if b == 0 {
-                                self.add_error_at("Division by zero", op_span.clone());
-                                None
-                            } else {
-                                Some(Value::Integer(a / b))
-                            }
-                        },
-                        (Value::Float(a), Value::Float(b)) => {
-                            // Floating point division by zero check
-                            if b == 0.0 {
-                                self.add_error_at("Division by zero", op_span.clone());
-                                None
-                            } else {
-                                Some(Value::Float(a / b))
-                            }
-                        },
-                        _ => {
-                            self.add_error_at(format!("Cannot divide {:?} by {:?}", left.get_type(), right.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Modulo => {
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => {
-                            if b == 0 {
-                                self.add_error_at("Modulo by zero", op_span.clone());
-                                None
-                            } else {
-                                Some(Value::Integer(a % b))
-                            }
-                        },
-                        (Value::Float(a), Value::Float(b)) => Some(Value::Float(a % b)),
-                        _ => {
-                            self.add_error_at(format!("Cannot compute modulo of {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Exponentiation => {
-                match Value::coerce_to_common_type(&left, &right) {
-                    Ok((l, r)) => match (l, r) {
-                        (Value::Integer(a), Value::Integer(b)) => {
-                            // Negative exponent requires float result (e.g., 2^-1 = 0.5)
-                            if b < 0 {
-                                Some(Value::Float((a as f64).powf(b as f64)))
-                            } else {
-                                Some(Value::Integer(a.pow(b as u32)))
-                            }
-                        },
-                        (Value::Float(a), Value::Float(b)) => Some(Value::Float(a.powf(b))),
-                        _ => {
-                            self.add_error_at(format!("Cannot exponentiate {:?} and {:?}", left.get_type(), right.get_type()), op_span.clone());
-                            None
-                        }
-                    },
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            // Bitwise operations only work on integers
-            ASTBinaryOperatorKind::BitwiseAnd => {
-                match (left.to_integer(), right.to_integer()) {
-                    (Ok(l), Ok(r)) => Some(Value::Integer(l & r)),
-                    _ => {
-                        self.add_error_at("Bitwise AND requires integer operands", op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::BitwiseOr => {
-                match (left.to_integer(), right.to_integer()) {
-                    (Ok(l), Ok(r)) => Some(Value::Integer(l | r)),
-                    _ => {
-                        self.add_error_at("Bitwise OR requires integer operands", op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::BitwiseXor => {
-                match (left.to_integer(), right.to_integer()) {
-                    (Ok(l), Ok(r)) => Some(Value::Integer(l ^ r)),
-                    _ => {
-                        self.add_error_at("Bitwise XOR requires integer operands", op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::LeftShift => {
-                match (left.to_integer(), right.to_integer()) {
-                    (Ok(l), Ok(r)) => Some(Value::Integer(l << r)),
-                    _ => {
-                        self.add_error_at("Left shift requires integer operands", op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::RightShift => {
-                match (left.to_integer(), right.to_integer()) {
-                    (Ok(l), Ok(r)) => Some(Value::Integer(l >> r)),
-                    _ => {
-                        self.add_error_at("Right shift requires integer operands", op_span.clone());
-                        None
-                    }
-                }
-            },
-            // Comparison operators
-            ASTBinaryOperatorKind::Equal => {
-                match left.equals(&right) {
-                    Ok(result) => Some(Value::Boolean(result)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::NotEqual => {
-                match left.equals(&right) {
-                    Ok(result) => Some(Value::Boolean(!result)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Less => {
-                match left.compare(&right) {
-                    Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Less)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::Greater => {
-                match left.compare(&right) {
-                    Ok(ordering) => Some(Value::Boolean(ordering == std::cmp::Ordering::Greater)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::LessEqual => {
-                match left.compare(&right) {
-                    Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Greater)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            ASTBinaryOperatorKind::GreaterEqual => {
-                match left.compare(&right) {
-                    Ok(ordering) => Some(Value::Boolean(ordering != std::cmp::Ordering::Less)),
-                    Err(e) => {
-                        self.add_error_at(e, op_span.clone());
-                        None
-                    }
-                }
-            },
-            // Logical operators are handled at the beginning with short-circuit
-            ASTBinaryOperatorKind::LogicalAnd | ASTBinaryOperatorKind::LogicalOr => {
-                unreachable!("Logical operators should be handled by short-circuit evaluation")
-            },
+        self.last_value = match apply_binary(&expr.operator.kind, &left, &right) {
+            Ok(value) => Some(value),
+            Err(e) => {
+                self.add_error_at(e, op_span);
+                None
+            }
         };
     }
 
@@ -761,12 +534,9 @@ impl ASTVisitor for ASTEvaluator {
                     if i > 0 {
                         print!(" ");
                     }
-                    match value {
-                        Value::Integer(n) => print!("{}", n),
-                        Value::Float(f) => print!("{}", f),
-                        Value::Boolean(b) => print!("{}", b),
-                        Value::String(s) => print!("{}", s),
-                    }
+                    // The evaluator never stores Unit (its "no value" is
+                    // last_value = None), so Display covers every case.
+                    print!("{}", value);
                 }
                 println!();
 

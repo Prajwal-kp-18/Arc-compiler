@@ -20,14 +20,29 @@ use crate::bytecode::chunk::Chunk;
 use crate::bytecode::opcode::OpCode;
 
 /// The output of a compile pass: the top-level "script" chunk, plus one
-/// chunk per function, indexed by `FunctionId.0`.
+/// compiled function per `FunctionId`, indexed by `FunctionId.0`.
 pub struct CompiledProgram {
     pub script: Chunk,
-    pub functions: Vec<Chunk>,
+    pub functions: Vec<CompiledFunction>,
+}
+
+/// A function's chunk plus the metadata the VM needs to call it. No arity
+/// field: the `Call` opcode carries its own argument count and the Resolver
+/// already rejected arity mismatches statically.
+pub struct CompiledFunction {
+    pub name: String,
+    pub frame_size: u32,
+    pub chunk: Chunk,
+}
+
+impl CompiledFunction {
+    fn placeholder() -> Self {
+        Self { name: String::new(), frame_size: 0, chunk: Chunk::new() }
+    }
 }
 
 pub struct BytecodeCompiler {
-    functions: Vec<Chunk>,
+    functions: Vec<CompiledFunction>,
     /// In-progress chunks; the top is the one currently being written to.
     /// Depth > 1 only while compiling a function nested inside another.
     chunk_stack: Vec<Chunk>,
@@ -40,7 +55,7 @@ pub struct BytecodeCompiler {
 impl BytecodeCompiler {
     pub fn new(function_count: u32) -> Self {
         Self {
-            functions: (0..function_count).map(|_| Chunk::new()).collect(),
+            functions: (0..function_count).map(|_| CompiledFunction::placeholder()).collect(),
             chunk_stack: Vec::new(),
             current_offset: 0,
         }
@@ -89,12 +104,12 @@ impl BytecodeCompiler {
         self.current().write_u16(Self::slot_u16(slot), offset);
     }
 
-    /// Placeholder pushed where there's genuinely no value to give (an
-    /// implicit return with no trailing expression statement, or `print`'s
-    /// result) — see design doc §4/§5. Reuses the evaluator's inert
-    /// `Integer(0)` filler convention for consistency.
+    /// Pushed where there's genuinely no value to give: an implicit return
+    /// with no trailing expression statement (design doc §4). `Unit` (not
+    /// the Phase 2 `Integer(0)` placeholder) so misusing the "result" is a
+    /// runtime error in the VM, matching the tree-walker's behavior.
     fn emit_placeholder(&mut self, offset: u32) {
-        self.emit_constant(Value::Integer(0), offset);
+        self.emit_constant(Value::Unit, offset);
     }
 
     // -- statements -----------------------------------------------------------
@@ -189,10 +204,23 @@ impl BytecodeCompiler {
 
     fn compile_function(&mut self, func: &ASTFunctionDeclaration) {
         let id = func.function_id.get().expect("Resolver assigns every function an id");
+
+        // The VM pops arguments straight into frame slots 0..arity — valid
+        // because the Resolver declares parameters first in a fresh frame,
+        // so their slots are always 0, 1, 2, ... in order.
+        for (i, param) in func.parameters.iter().enumerate() {
+            let slot = param.slot.get().expect("Resolver assigns every parameter a slot");
+            debug_assert_eq!(slot.0 as usize, i, "parameter slots must be sequential from 0");
+        }
+
         self.chunk_stack.push(Chunk::new());
         self.compile_body(&func.body);
         let chunk = self.chunk_stack.pop().expect("function chunk was just pushed");
-        self.functions[id.0 as usize] = chunk;
+        self.functions[id.0 as usize] = CompiledFunction {
+            name: func.name.clone(),
+            frame_size: func.frame_size.get().expect("Resolver computes every function's frame size"),
+            chunk,
+        };
     }
 
     // -- expressions ------------------------------------------------------------
@@ -446,7 +474,7 @@ mod tests {
         assert!(script_text.contains("OP_CALL"));
         assert!(script_text.contains("fn#0"));
 
-        let fn_text = disassemble_chunk(&program.functions[0], "fn#0");
+        let fn_text = disassemble_chunk(&program.functions[0].chunk, "fn#0");
         assert!(fn_text.contains("OP_ADD"));
         assert!(fn_text.contains("OP_RETURN"));
     }
@@ -454,7 +482,7 @@ mod tests {
     #[test]
     fn test_recursive_function_calls_itself_by_id() {
         let program = compile("fn fact(n) { if n <= 1 { return 1; } else { return n * fact(n - 1); } } fact(5);");
-        let fn_text = disassemble_chunk(&program.functions[0], "fn#0");
+        let fn_text = disassemble_chunk(&program.functions[0].chunk, "fn#0");
         assert!(fn_text.contains("OP_CALL"));
         assert!(fn_text.contains("fn#0")); // calls itself
         assert!(fn_text.contains("OP_MULTIPLY"));
@@ -509,7 +537,7 @@ mod tests {
     #[test]
     fn test_implicit_return_from_trailing_expression_has_no_trailing_pop() {
         let program = compile("fn f() { 7; }");
-        let text = disassemble_chunk(&program.functions[0], "fn#0");
+        let text = disassemble_chunk(&program.functions[0].chunk, "fn#0");
         let lines = op_lines(&text);
         assert_eq!(lines.len(), 2, "{:#?}", lines);
         assert!(lines[0].contains("OP_CONSTANT"));
@@ -519,7 +547,7 @@ mod tests {
     #[test]
     fn test_implicit_return_from_trailing_declaration_pushes_placeholder() {
         let program = compile("fn f() { let x = 42; }");
-        let text = disassemble_chunk(&program.functions[0], "fn#0");
+        let text = disassemble_chunk(&program.functions[0].chunk, "fn#0");
         let lines = op_lines(&text);
         // CONSTANT 42, SET_LOCAL, POP (statement discard), CONSTANT 0 (placeholder), RETURN
         assert_eq!(lines.len(), 5, "{:#?}", lines);

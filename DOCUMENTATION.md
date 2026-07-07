@@ -31,8 +31,9 @@ Arc is a lightweight, interpreted expression language designed for learning comp
 ## Architecture
 
 Arc uses a classic staged compilation pipeline: lex → parse → resolve, then
-either tree-walking evaluation (the default) or bytecode compilation
-(`--dump-bytecode`; no VM executes it yet).
+one of two interchangeable execution backends — the tree-walking evaluator
+(the default) or the bytecode compiler + virtual machine (`--backend=vm`).
+Both backends are held to byte-identical output on a golden test suite.
 
 ### 1. Lexical Analysis (Lexer)
 **Location**: `src/ast/lexer.rs`
@@ -129,12 +130,12 @@ Executes the resolved AST using the Visitor pattern.
 - User-defined function support; function bodies are registered once (not
   re-cloned per call)
 
-### 5. Bytecode Compiler (alternative backend)
+### 5. Bytecode Compiler (VM backend, part 1)
 **Location**: `src/bytecode/` (`opcode.rs`, `chunk.rs`, `compiler.rs`, `disassembler.rs`)
 
 Lowers the Resolver-annotated AST into bytecode `Chunk`s — one per function
-plus one for the top-level script. No execution happens yet (a VM is the next
-phase); the output is inspected via the built-in disassembler.
+plus one for the top-level script — executed by the VM below, or inspected
+via the built-in disassembler (`--dump-bytecode`).
 
 **Features**:
 - Small, generic instruction set (~35 opcodes) dispatching dynamically over
@@ -145,15 +146,32 @@ phase); the output is inspected via the built-in disassembler.
   sequences instead of dedicated opcodes
 - Statement compilation is stack-neutral; every chunk ends in an explicit
   `RETURN`, and the implicit-return rule matches the evaluator exactly (only
-  a trailing expression statement produces a value)
+  a trailing expression statement produces a value — anything else produces
+  `Unit`, the "no value" value)
 - Per-byte source-offset table in each chunk for error reporting
 - Disassembler prints one line per instruction: offset, source position,
   mnemonic, decoded operands, and inline constant values
 
-Run it with:
-```bash
-cargo run -- --dump-bytecode program.arc
-```
+### 6. Virtual Machine (VM backend, part 2)
+**Location**: `src/bytecode/vm.rs`
+
+A stack-based VM executing compiled chunks — the second, independently
+verified execution engine (`--backend=vm`).
+
+**Features**:
+- One shared operand stack; one call frame per active call holding its own
+  instruction pointer and local slots (direct slot indexing, no name lookups)
+- Calls are iterative, so Arc recursion consumes no host stack — but call
+  depth is capped at the same limit as the evaluator, with the same
+  stack-overflow error message
+- Binary-operator semantics come from the same shared `apply_binary`
+  function the evaluator uses, so the two backends cannot drift apart
+- Runtime errors carry source positions recovered from the chunks'
+  offset tables — same line/column rendering as evaluator errors
+- Halts on the first runtime error (the evaluator records and continues) —
+  identical behavior on error-free programs
+- Meaningfully faster than the tree-walker: ~1.7× on a recursive-fibonacci
+  benchmark (`examples/bench.arc`)
 
 ---
 
@@ -716,6 +734,15 @@ cargo build --release
 ./target/release/rust-compiler program.arc
 ```
 
+### Choosing an Execution Backend
+```bash
+# Tree-walking evaluator (default)
+cargo run -- program.arc --backend=tree-walk
+
+# Bytecode VM — same output, faster
+cargo run -- program.arc --backend=vm
+```
+
 ### Bytecode Disassembly
 ```bash
 # Compile to bytecode and print the disassembly (no execution)
@@ -754,10 +781,11 @@ Arc is designed for learning, not performance. However:
 - **Parser**: O(n) for expression parsing
 - **Resolver**: O(n) single pass over the AST; variable/function lookups are O(1) slot indexing, no hashing
 - **Evaluator**: O(n) where n is AST nodes; variable access is direct `Vec` indexing by slot
+- **VM**: same asymptotics but a flat dispatch loop instead of a recursive
+  AST walk — ~1.7× faster on a call-heavy benchmark (`examples/bench.arc`)
 
 For production use, consider:
-- Bytecode compilation
-- JIT compilation
+- JIT / native compilation
 - Optimized data structures
 
 ---
@@ -770,7 +798,9 @@ For production use, consider:
 - Arrays and tuples
 - More built-in functions
 - Standard library
-- A stack-based VM executing the bytecode the compiler already produces
+- An optimizing IR (constant folding, dead code elimination) between the
+  resolved AST and codegen
+- A native backend (LLVM or Cranelift)
 
 ---
 

@@ -12,9 +12,9 @@ use crate::bytecode::opcode::OpCode;
 /// function in `FunctionId` order.
 pub fn disassemble_program(program: &CompiledProgram) -> String {
     let mut out = disassemble_chunk(&program.script, "script");
-    for (id, chunk) in program.functions.iter().enumerate() {
+    for (id, function) in program.functions.iter().enumerate() {
         out.push('\n');
-        out.push_str(&disassemble_chunk(chunk, &format!("fn#{}", id)));
+        out.push_str(&disassemble_chunk(&function.chunk, &format!("fn#{} {}", id, function.name)));
     }
     out
 }
