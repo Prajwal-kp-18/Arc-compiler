@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["execute_file","main","print_diagnostics","run_repl"],"mod":["ast"]};
+window.SIDEBAR_ITEMS = {"fn":["dump_bytecode_for_file","execute_file","main","parse_and_resolve","print_diagnostics","run_repl"],"mod":["ast","bytecode"]};

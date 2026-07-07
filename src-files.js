@@ -1,2 +1,2 @@
-createSrcSidebar('[["arc",["",[["ast",[],["diagnostic.rs","evaluator.rs","lexer.rs","mod.rs","parser.rs","resolver.rs","types.rs"]]],["main.rs"]]],["arc_compiler",["",[["ast",[],["diagnostic.rs","evaluator.rs","lexer.rs","mod.rs","parser.rs","resolver.rs","types.rs"]]],["lib.rs"]]]]');
-//{"start":19,"fragment_lengths":[127,136]}
+createSrcSidebar('[["arc",["",[["ast",[],["diagnostic.rs","evaluator.rs","lexer.rs","mod.rs","parser.rs","resolver.rs","types.rs"]],["bytecode",[],["chunk.rs","compiler.rs","disassembler.rs","mod.rs","opcode.rs"]]],["main.rs"]]],["arc_compiler",["",[["ast",[],["diagnostic.rs","evaluator.rs","lexer.rs","mod.rs","parser.rs","resolver.rs","types.rs"]],["bytecode",[],["chunk.rs","compiler.rs","disassembler.rs","mod.rs","opcode.rs"]]],["lib.rs"]]]]');
+//{"start":19,"fragment_lengths":[209,218]}
