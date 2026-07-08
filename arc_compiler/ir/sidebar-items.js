@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["dump","instr","lower","passes","to_bytecode"]};

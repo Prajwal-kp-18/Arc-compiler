@@ -73,10 +73,16 @@
 <a href=#73 id=73 data-nosnippet>73</a>    <span class="doccomment">/// Patches a jump emitted at `operand_at` (as returned by
 <a href=#74 id=74 data-nosnippet>74</a>    /// [`Chunk::emit_jump`]) to land at the current end of the chunk.
 <a href=#75 id=75 data-nosnippet>75</a>    </span><span class="kw">pub fn </span>patch_jump(<span class="kw-2">&amp;mut </span><span class="self">self</span>, operand_at: usize) {
-<a href=#76 id=76 data-nosnippet>76</a>        <span class="kw">let </span>distance = <span class="self">self</span>.code.len() - (operand_at + <span class="number">2</span>);
-<a href=#77 id=77 data-nosnippet>77</a>        <span class="kw">let </span>bytes = u16::try_from(distance).expect(<span class="string">"jump distance exceeded u16::MAX bytes"</span>).to_be_bytes();
-<a href=#78 id=78 data-nosnippet>78</a>        <span class="self">self</span>.code[operand_at] = bytes[<span class="number">0</span>];
-<a href=#79 id=79 data-nosnippet>79</a>        <span class="self">self</span>.code[operand_at + <span class="number">1</span>] = bytes[<span class="number">1</span>];
-<a href=#80 id=80 data-nosnippet>80</a>    }
-<a href=#81 id=81 data-nosnippet>81</a>}
+<a href=#76 id=76 data-nosnippet>76</a>        <span class="self">self</span>.patch_jump_to(operand_at, <span class="self">self</span>.code.len());
+<a href=#77 id=77 data-nosnippet>77</a>    }
+<a href=#78 id=78 data-nosnippet>78</a>
+<a href=#79 id=79 data-nosnippet>79</a>    <span class="doccomment">/// Patches a jump emitted at `operand_at` to land at `target` (a code
+<a href=#80 id=80 data-nosnippet>80</a>    /// offset at or after the operand — jumps are forward-only).
+<a href=#81 id=81 data-nosnippet>81</a>    </span><span class="kw">pub fn </span>patch_jump_to(<span class="kw-2">&amp;mut </span><span class="self">self</span>, operand_at: usize, target: usize) {
+<a href=#82 id=82 data-nosnippet>82</a>        <span class="kw">let </span>distance = target - (operand_at + <span class="number">2</span>);
+<a href=#83 id=83 data-nosnippet>83</a>        <span class="kw">let </span>bytes = u16::try_from(distance).expect(<span class="string">"jump distance exceeded u16::MAX bytes"</span>).to_be_bytes();
+<a href=#84 id=84 data-nosnippet>84</a>        <span class="self">self</span>.code[operand_at] = bytes[<span class="number">0</span>];
+<a href=#85 id=85 data-nosnippet>85</a>        <span class="self">self</span>.code[operand_at + <span class="number">1</span>] = bytes[<span class="number">1</span>];
+<a href=#86 id=86 data-nosnippet>86</a>    }
+<a href=#87 id=87 data-nosnippet>87</a>}
 </code></pre></div></section></main></body></html>

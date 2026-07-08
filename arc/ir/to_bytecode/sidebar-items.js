@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["binary_opcode","function_to_chunk","program_to_bytecode"],"struct":["ChunkBuilder"]};

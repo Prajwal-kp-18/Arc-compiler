@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["chunk","compiler","disassembler","opcode"]};
+window.SIDEBAR_ITEMS = {"mod":["chunk","compiler","disassembler","opcode","vm"]};

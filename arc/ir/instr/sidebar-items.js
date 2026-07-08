@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["InstrKind","Terminator"],"struct":["Block","BlockId","Instruction","IrFunction","IrProgram","Reg"]};

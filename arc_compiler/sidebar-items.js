@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["ast","bytecode"]};
+window.SIDEBAR_ITEMS = {"mod":["ast","bytecode","ir"]};

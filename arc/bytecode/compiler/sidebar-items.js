@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["BytecodeCompiler","CompiledProgram"]};
+window.SIDEBAR_ITEMS = {"struct":["BytecodeCompiler","CompiledFunction","CompiledProgram"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["binary_can_error","is_static_concrete","is_static_numeric"],"struct":["FnBuilder","IrLowering","PendingBlock"]};

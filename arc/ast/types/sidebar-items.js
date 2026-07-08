@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["DataType","Value"]};
+window.SIDEBAR_ITEMS = {"enum":["DataType","Value"],"fn":["apply_binary","bitwise"]};

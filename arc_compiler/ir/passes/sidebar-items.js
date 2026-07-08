@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["cse","dce","fold","optimize"]};

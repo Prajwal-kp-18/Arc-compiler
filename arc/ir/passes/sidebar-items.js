@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Key"],"fn":["canonicalize","canonicalize_mut","cse","dce","fold","fold_binary","mark_unreachable_blocks","optimize","optimize_function","write_counts"]};
