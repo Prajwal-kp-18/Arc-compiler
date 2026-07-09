@@ -34,7 +34,7 @@ use crate::ast::ASTBinaryOperator;
 use crate::ast::ASTBinaryOperatorKind;
 use crate::ast::ASTUnaryOperator;
 use crate::ast::ASTUnaryOperatorKind;
-use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement};
+use crate::ast::{ASTStatement, ASTExpression, ASTVariableDeclaration, ASTAssignment, ASTIfStatement, ASTWhileStatement, ASTFunctionDeclaration, ASTReturnStatement};
 use crate::ast::lexer::TokenKind;
 use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 
@@ -138,6 +138,8 @@ impl Parser {
                 | TokenKind::Fn
                 | TokenKind::Return
                 | TokenKind::IF
+                | TokenKind::While
+                | TokenKind::For
                 | TokenKind::LeftBrace => return,
                 _ => {
                     self.consume();
@@ -173,6 +175,14 @@ impl Parser {
         // Check for if statement
         if token.kind == TokenKind::IF {
             return self.parse_if_statement();
+        }
+
+        if token.kind == TokenKind::While {
+            return self.parse_while_statement();
+        }
+
+        if token.kind == TokenKind::For {
+            return self.parse_for_statement();
         }
 
         // Check for bare block statement `{ ... }`
@@ -215,6 +225,76 @@ impl Parser {
             None
         };
         Some(ASTStatement::if_statement(ASTIfStatement::new(condition, then_branch, else_branch)))
+    }
+
+    /// Parses `while <condition> { ... }`.
+    pub fn parse_while_statement(&mut self) -> Option<ASTStatement> {
+        self.consume(); // consume 'while'
+        let condition = self.parse_expression()?;
+        let body = self.parse_block()?;
+        Some(ASTStatement::while_statement(ASTWhileStatement::new(condition, body)))
+    }
+
+    /// Parses `for <name> in <start>..<end> { ... }`.
+    ///
+    /// Desugars entirely at parse time into a block containing a `let` and a
+    /// `while` — no dedicated for-loop AST node, resolver/evaluator/compiler
+    /// support, since the desugared form reuses all of that machinery:
+    /// ```text
+    /// { let <name> = <start>; while <name> < <end> { <body>; <name> = <name> + 1; } }
+    /// ```
+    pub fn parse_for_statement(&mut self) -> Option<ASTStatement> {
+        self.consume(); // consume 'for'
+
+        let name_token = self.consume()?.clone();
+        let var_name = match &name_token.kind {
+            TokenKind::Identifier(n) => n.clone(),
+            _ => {
+                self.emit_error("Expected loop variable name after 'for'", Some(name_token.span.clone()));
+                return None;
+            }
+        };
+
+        if self.consume()?.kind != TokenKind::In {
+            let span = self.peek(-1).map(|t| t.span.clone());
+            self.emit_error("Expected 'in' after for-loop variable", span);
+            return None;
+        }
+
+        let start = self.parse_expression()?;
+        if self.consume()?.kind != TokenKind::DotDot {
+            let span = self.peek(-1).map(|t| t.span.clone());
+            self.emit_error("Expected '..' in for-loop range", span);
+            return None;
+        }
+        let end = self.parse_expression()?;
+
+        let mut body = self.parse_block()?;
+        body.push(ASTStatement::assignment(ASTAssignment::new(
+            var_name.clone(),
+            ASTExpression::binary(
+                ASTBinaryOperator::new(ASTBinaryOperatorKind::Plus, name_token.clone()),
+                ASTExpression::identifier(var_name.clone(), Some(name_token.clone())),
+                ASTExpression::number(1),
+            ),
+            Some(name_token.clone()),
+        )));
+
+        let while_stmt = ASTStatement::while_statement(ASTWhileStatement::new(
+            ASTExpression::binary(
+                ASTBinaryOperator::new(ASTBinaryOperatorKind::Less, name_token.clone()),
+                ASTExpression::identifier(var_name.clone(), Some(name_token.clone())),
+                end,
+            ),
+            body,
+        ));
+        let let_stmt = ASTStatement::variable_declaration(ASTVariableDeclaration::new(
+            var_name,
+            start,
+            true,
+            Some(name_token),
+        ));
+        Some(ASTStatement::block(vec![let_stmt, while_stmt]))
     }
 
     /// Parses `fn name(param1, param2) { ... }`.
@@ -719,5 +799,54 @@ mod tests {
         let (_, diagnostics) = parse_all("fn f() { let x = 1;");
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("Unclosed block"));
+    }
+
+    #[test]
+    fn test_while_statement() {
+        let (statements, diagnostics) = parse_all("while x < 10 { x = x + 1; }");
+        assert!(diagnostics.is_empty());
+        assert_eq!(statements.len(), 1);
+        match &statements[0].kind {
+            ASTStatementKind::WhileStatement(w) => {
+                assert!(matches!(w.condition.kind, ASTExpressionKind::Binary(_)));
+                assert_eq!(w.body.len(), 1);
+            }
+            _ => panic!("expected a while statement"),
+        }
+    }
+
+    #[test]
+    fn test_for_statement_desugars_to_block_with_let_and_while() {
+        let (statements, diagnostics) = parse_all("for i in 0..5 { print(i); }");
+        assert!(diagnostics.is_empty());
+        assert_eq!(statements.len(), 1);
+        match &statements[0].kind {
+            ASTStatementKind::Block(inner) => {
+                assert_eq!(inner.len(), 2);
+                match &inner[0].kind {
+                    ASTStatementKind::VariableDeclaration(decl) => {
+                        assert_eq!(decl.name, "i");
+                        assert!(decl.is_mutable);
+                    }
+                    _ => panic!("expected the desugared `let i = 0`"),
+                }
+                match &inner[1].kind {
+                    ASTStatementKind::WhileStatement(w) => {
+                        // body: the original print(i) plus the desugared `i = i + 1`
+                        assert_eq!(w.body.len(), 2);
+                        assert!(matches!(w.body[1].kind, ASTStatementKind::Assignment(_)));
+                    }
+                    _ => panic!("expected the desugared while loop"),
+                }
+            }
+            _ => panic!("expected a block statement"),
+        }
+    }
+
+    #[test]
+    fn test_for_statement_missing_dotdot_is_a_parse_error() {
+        let (_, diagnostics) = parse_all("for i in 0 to 5 { }");
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].message.contains("Expected '..'"));
     }
 }

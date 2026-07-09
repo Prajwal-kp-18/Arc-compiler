@@ -75,6 +75,7 @@ pub trait ASTVisitor {
             ASTStatementKind::Assignment(assign) => self.visit_assignment(assign),
             ASTStatementKind::Block(stmts) => self.visit_block(stmts),
             ASTStatementKind::IfStatement(if_stmt) => self.visit_if_statement(if_stmt),
+            ASTStatementKind::WhileStatement(while_stmt) => self.visit_while_statement(while_stmt),
             ASTStatementKind::FunctionDeclaration(func) => self.visit_function_declaration(func),
             ASTStatementKind::ReturnStatement(ret) => self.visit_return_statement(ret),
         }
@@ -185,6 +186,16 @@ pub trait ASTVisitor {
     /// Called for plain block statements `{ ... }`. Default visits each statement.
     fn visit_block(&mut self, statements: &Vec<ASTStatement>) {
         for stmt in statements {
+            self.visit_statement(stmt);
+        }
+    }
+
+    /// Called for `while` statements. Default visits the condition and the
+    /// body once each (non-executing traversal) — actual looping is an
+    /// evaluator/compiler concern, not a generic AST-walk concern.
+    fn visit_while_statement(&mut self, while_stmt: &ASTWhileStatement) {
+        self.visit_expression(&while_stmt.condition);
+        for stmt in &while_stmt.body {
             self.visit_statement(stmt);
         }
     }
@@ -301,6 +312,7 @@ pub enum  ASTStatementKind{
     Assignment(ASTAssignment),
     Block(Vec<ASTStatement>),
     IfStatement(ASTIfStatement),
+    WhileStatement(ASTWhileStatement),
     FunctionDeclaration(ASTFunctionDeclaration),
     ReturnStatement(ASTReturnStatement),
 }
@@ -350,6 +362,11 @@ impl ASTStatement {
     pub fn return_statement(ret: ASTReturnStatement) -> Self {
         ASTStatement::new(ASTStatementKind::ReturnStatement(ret))
     }
+
+    /// Wraps a while statement as a statement.
+    pub fn while_statement(while_stmt: ASTWhileStatement) -> Self {
+        ASTStatement::new(ASTStatementKind::WhileStatement(while_stmt))
+    }
 }
 
 /// An `if` statement with optional `else`.
@@ -371,6 +388,19 @@ impl ASTIfStatement {
             then_branch,
             else_branch,
         }
+    }
+}
+
+/// A `while` statement: `while <condition> { <body> }`.
+#[derive(Clone)]
+pub struct ASTWhileStatement {
+    pub condition: Box<ASTExpression>,
+    pub body: Vec<ASTStatement>,
+}
+
+impl ASTWhileStatement {
+    pub fn new(condition: ASTExpression, body: Vec<ASTStatement>) -> Self {
+        Self { condition: Box::new(condition), body }
     }
 }
 

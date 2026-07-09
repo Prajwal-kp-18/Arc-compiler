@@ -75,8 +75,13 @@ pub enum TokenKind {
     Identifier(String),
     // Conditional
     IF,
-    ELSE
-}  
+    ELSE,
+    // Loops
+    While,
+    For,
+    In,
+    DotDot,
+}
 
 /// The byte range and original text of a token in the source.
 #[derive(Debug, PartialEq, Clone)]
@@ -282,6 +287,16 @@ impl<'o> Lexer<'o> {
                     TokenKind::Greater
                 }
             },
+            '.' => {
+                // Only `..` (range, used by `for x in a..b`) is meaningful;
+                // Arc has no field/method access, so a lone `.` stays `Bad`.
+                if self.current_char() == Some('.') {
+                    self.consume();
+                    TokenKind::DotDot
+                } else {
+                    TokenKind::Bad
+                }
+            },
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
             ',' => TokenKind::Comma,
@@ -433,6 +448,9 @@ impl<'o> Lexer<'o> {
             "return" => TokenKind::Return,
             "if" => TokenKind::IF,
             "else" => TokenKind::ELSE,
+            "while" => TokenKind::While,
+            "for" => TokenKind::For,
+            "in" => TokenKind::In,
             _ => TokenKind::Identifier(identifier), // User-defined name
         }
     }
@@ -511,7 +529,7 @@ mod tests {
     #[test]
     fn test_keywords_and_identifiers() {
         assert_eq!(
-            non_whitespace_kinds("let const fn return if else true false foo"),
+            non_whitespace_kinds("let const fn return if else while for in true false foo"),
             vec![
                 TokenKind::Let,
                 TokenKind::Const,
@@ -519,11 +537,22 @@ mod tests {
                 TokenKind::Return,
                 TokenKind::IF,
                 TokenKind::ELSE,
+                TokenKind::While,
+                TokenKind::For,
+                TokenKind::In,
                 TokenKind::Boolean(true),
                 TokenKind::Boolean(false),
                 TokenKind::Identifier("foo".to_string()),
                 TokenKind::EOF,
             ]
+        );
+    }
+
+    #[test]
+    fn test_range_dotdot_token() {
+        assert_eq!(
+            non_whitespace_kinds("0..10"),
+            vec![TokenKind::Number(0), TokenKind::DotDot, TokenKind::Number(10), TokenKind::EOF]
         );
     }
 
