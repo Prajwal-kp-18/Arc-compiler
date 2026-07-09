@@ -326,6 +326,145 @@ mod tests {
         let live_after = liveness::live_after_each(&f.blocks[bid], &live.live_out[bid]);
         assert!(live_after[idx].contains(&i_slot), "\n{}", dump::dump_program(&program));
     }
+
+    // -- dead store elimination --------------------------------------------------
+
+    #[test]
+    fn test_dse_removes_store_never_read_again() {
+        let mut program = lower_source("fn f(n: Int) { let a = 1; let b = 2; return b; } f(1);");
+        let f = &mut program.functions[0];
+        passes::dse(f);
+        let stores = f
+            .blocks
+            .iter()
+            .filter(|b| !b.dead)
+            .flat_map(|b| b.instrs.iter())
+            .filter(|i| matches!(i.kind, InstrKind::StoreLocal { .. }))
+            .count();
+        assert_eq!(stores, 1, "expected only b's store to survive\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_dse_keeps_store_read_in_other_branch_arm() {
+        let mut program =
+            lower_source("fn f(cond: Bool, n: Int) { let x = n; if cond { return 1; } else { return x; } } f(true, 5);");
+        let f = &mut program.functions[0];
+        passes::dse(f);
+        let stores = f
+            .blocks
+            .iter()
+            .filter(|b| !b.dead)
+            .flat_map(|b| b.instrs.iter())
+            .filter(|i| matches!(i.kind, InstrKind::StoreLocal { .. }))
+            .count();
+        assert_eq!(stores, 1, "x's store is read in the else arm, must survive\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_dse_keeps_loop_carried_store() {
+        let mut program = lower_source("fn f(n: Int) { let i = 0; while i < n { i = i + 1; } return i; } f(3);");
+        let f = &mut program.functions[0];
+        passes::dse(f);
+        let stores = f
+            .blocks
+            .iter()
+            .filter(|b| !b.dead)
+            .flat_map(|b| b.instrs.iter())
+            .filter(|i| matches!(i.kind, InstrKind::StoreLocal { .. }))
+            .count();
+        // The initializer `i = 0` and the body's `i = i + 1` both survive:
+        // both are read (by the condition / by return).
+        assert_eq!(stores, 2, "\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_dse_never_touches_store_global() {
+        // Top-level `let` is a global, not a local — conservatively always
+        // live, DSE must not remove it even though `a` is never read again.
+        let mut program = lower_source("let a = 1; let b = 2; b;");
+        passes::dse(&mut program.script);
+        let stores = count_instrs(&program, |k| matches!(k, InstrKind::StoreGlobal { .. }));
+        assert_eq!(stores, 2, "\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_optimize_pipeline_runs_dse() {
+        let mut program = lower_source("fn f(n: Int) { let a = 1; let b = 2; return b; } f(1);");
+        passes::optimize(&mut program);
+        let f = &program.functions[0];
+        let stores = f
+            .blocks
+            .iter()
+            .filter(|b| !b.dead)
+            .flat_map(|b| b.instrs.iter())
+            .filter(|i| matches!(i.kind, InstrKind::StoreLocal { .. }))
+            .count();
+        assert_eq!(stores, 1, "only b's store should survive the full pipeline\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_dse_removes_dead_store_even_when_fed_by_erroring_op() {
+        let mut program = lower_source("fn f(n: Int) { let x = 10 % n; return 1; } f(1);");
+        passes::optimize(&mut program);
+        let f = &program.functions[0];
+        let stores = f
+            .blocks
+            .iter()
+            .filter(|b| !b.dead)
+            .flat_map(|b| b.instrs.iter())
+            .filter(|i| matches!(i.kind, InstrKind::StoreLocal { .. }))
+            .count();
+        assert_eq!(stores, 0, "\n{}", dump::dump_program(&program));
+        // But the modulo itself — which can raise "Modulo by zero" — must
+        // survive; deleting it would silently drop a runtime error.
+        let in_f = |k: &InstrKind| matches!(k, InstrKind::Binary { .. });
+        assert_eq!(count_instrs(&program, in_f), 1, "\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_dse_preserves_runtime_error_from_dead_stores_source_expr() {
+        // `x`'s store is dead (never read again), but `10 % n` can raise
+        // "Modulo by zero" at n=0 — DSE must not silently swallow that
+        // error by deleting the op along with the dead store.
+        //
+        // Compared against the *un-optimized* VM rather than the
+        // tree-walker: the tree-walker wraps any erroring store RHS (`let`
+        // initializer or assignment) in an extra diagnostic the bytecode/IR
+        // paths never emit — a pre-existing divergence unrelated to DSE,
+        // reproducible on plain `--backend=vm` with no IR pass involved.
+        // This test isolates DSE's actual contract: it must not change the
+        // optimized pipeline's own error behavior relative to unoptimized.
+        let source = "fn f(n: Int) { let x = 10 % n; return 1; } f(0);";
+        let mut lexer = Lexer::new(source);
+        let mut tokens = Vec::new();
+        while let Some(token) = lexer.next_token() {
+            tokens.push(token);
+        }
+        let mut parser = Parser::new(tokens);
+        let mut ast = Ast::new();
+        while let Some(stmt) = parser.next_statement() {
+            ast.add_statement(stmt);
+        }
+        let mut resolver = Resolver::new();
+        resolver.resolve(&ast);
+        assert!(!resolver.has_errors());
+
+        let unopt = lower::IrLowering::new(resolver.function_count()).lower(&ast);
+        let unopt_compiled = to_bytecode::program_to_bytecode(&unopt);
+        let mut unopt_vm = VM::new(&unopt_compiled, resolver.global_slot_count());
+        unopt_vm.run();
+
+        let mut opt = lower::IrLowering::new(resolver.function_count()).lower(&ast);
+        passes::optimize(&mut opt);
+        let opt_compiled = to_bytecode::program_to_bytecode(&opt);
+        let mut opt_vm = VM::new(&opt_compiled, resolver.global_slot_count());
+        opt_vm.run();
+
+        let unopt_errors: Vec<_> = unopt_vm.errors.iter().map(|d| d.message.clone()).collect();
+        let opt_errors: Vec<_> = opt_vm.errors.iter().map(|d| d.message.clone()).collect();
+        assert_eq!(unopt_errors, opt_errors);
+        assert!(!opt_errors.is_empty(), "expected the modulo-by-zero error to survive DSE");
+    }
     // -- the exit-criterion metric ----------------------------------------------
 
     #[test]

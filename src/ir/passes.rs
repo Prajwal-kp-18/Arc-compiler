@@ -1,7 +1,8 @@
 //! # Optimization Passes
 //!
-//! Constant folding, dead code elimination, and local common-subexpression
-//! elimination, run per-function to a fixpoint. Every pass obeys one law:
+//! Constant folding, dead code elimination, local common-subexpression
+//! elimination, and dead-store elimination (via [`liveness`]), run
+//! per-function to a fixpoint. Every pass obeys one law:
 //! **behavior is untouchable** — including *runtime errors*. A fold that
 //! would error doesn't fold (`1 / 0` stays and fails at runtime, same line,
 //! same message); DCE and CSE only touch instructions whose `can_error`
@@ -15,6 +16,7 @@ use crate::ast::types::{apply_binary, Value};
 use crate::ast::ASTBinaryOperatorKind;
 
 use super::instr::{InstrKind, IrFunction, IrProgram, Reg, Terminator};
+use super::liveness;
 
 /// Runs the full pass pipeline (fold → DCE → CSE, to fixpoint) on every
 /// function.
@@ -32,6 +34,7 @@ fn optimize_function(f: &mut IrFunction) {
         let mut changed = fold(f);
         changed |= dce(f);
         changed |= cse(f);
+        changed |= dse(f);
         if !changed {
             return;
         }
@@ -336,4 +339,33 @@ fn canonicalize_mut(r: &mut Reg, subst: &HashMap<Reg, Reg>) {
     while let Some(rep) = subst.get(r) {
         *r = *rep;
     }
+}
+
+// -- dead store elimination ---------------------------------------------------
+
+/// Removes `StoreLocal`s whose slot is never read again on any path to
+/// function exit (per [`liveness::analyze`]). `StoreGlobal` is never
+/// touched — globals are conservatively always live. Only the store itself
+/// is deleted; if that orphans its `src`'s defining instruction, the next
+/// `dce` round reclaims it (and only if pure — an erroring op stays, so a
+/// runtime error a dead store's value would have raised is preserved).
+pub fn dse(f: &mut IrFunction) -> bool {
+    let live = liveness::analyze(f);
+    let mut changed = false;
+
+    for (id, block) in f.blocks.iter_mut().enumerate() {
+        if block.dead {
+            continue;
+        }
+        let live_after = liveness::live_after_each(block, &live.live_out[id]);
+        let before = block.instrs.len();
+        let mut idx = 0;
+        block.instrs.retain(|instr| {
+            let dead = matches!(&instr.kind, InstrKind::StoreLocal { slot, .. } if !live_after[idx].contains(&slot.0));
+            idx += 1;
+            !dead
+        });
+        changed |= block.instrs.len() != before;
+    }
+    changed
 }
