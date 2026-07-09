@@ -124,15 +124,43 @@ if score == 10 {
 }
 print("score after the if statement:", score)
 
+// While and for loops
+print("")
+print("12) While and for loops")
+let loop_sum = 0
+let i = 0
+while i < 5 {
+    loop_sum = loop_sum + i
+    i = i + 1
+}
+print("sum of 0..4 via while:", loop_sum)
+
+let loop_total = 0
+for j in 0..5 {
+    loop_total = loop_total + j
+}
+print("sum of 0..4 via for:", loop_total)
+
+fn first_over(limit) {
+    let n = 0
+    while true {
+        if n > limit {
+            return n
+        }
+        n = n + 1
+    }
+}
+print("first_over(3) (return inside a loop):", first_over(3))
+
 // Comments are ignored by the lexer.
 // Single-line comments are fine.
 /* Multi-line comments are also supported. */
 
 // -----------------------------------------------------------------------------
-// 12) Regression tests (manual)
+// 13) Regression tests (manual)
 // -----------------------------------------------------------------------------
 print("")
-print("12) Regression tests (manual)")
+print("13) Regression tests (manual)")
 
 // Test A: bare block works and does not leak shadowed value
 let outer = 5
@@ -177,6 +205,24 @@ if t3 {
 } else {
     tests_failed = tests_failed + 1
     print("[FAIL] function square(4)")
+}
+
+let t4 = (loop_sum == 10)
+if t4 {
+    tests_passed = tests_passed + 1
+    print("[PASS] while loop sum")
+} else {
+    tests_failed = tests_failed + 1
+    print("[FAIL] while loop sum")
+}
+
+let t5 = (loop_total == 10)
+if t5 {
+    tests_passed = tests_passed + 1
+    print("[PASS] for loop sum")
+} else {
+    tests_failed = tests_failed + 1
+    print("[FAIL] for loop sum")
 }
 
 print("tests_passed =", tests_passed)

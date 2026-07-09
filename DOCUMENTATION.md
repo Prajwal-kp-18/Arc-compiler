@@ -45,8 +45,8 @@ Converts source code into a stream of tokens.
 
 **Token Types**:
 - **Literals**: `Number`, `Float`, `Boolean`, `String`
-- **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`
-- **Keywords**: `let`, `const`, `fn`, `return`, `if`, `else`
+- **Operators**: `+`, `-`, `*`, `/`, `%`, `**`, `&`, `|`, `^`, `<<`, `>>`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `&&`, `||`, `!`, `++`, `--`, `..`
+- **Keywords**: `let`, `const`, `fn`, `return`, `if`, `else`, `while`, `for`, `in`
 - **Delimiters**: `(`, `)`, `,`, `:`, `{`, `}`, `;`
 - **Special**: `=`, `Identifier`, `EOF`, `Whitespace`, `Bad`
 
@@ -67,6 +67,11 @@ Builds an Abstract Syntax Tree (AST) using precedence climbing.
 - Assignment statements
 - Bare block statements (`{ ... }`)
 - If/else statements
+- While loops
+- For loops (`for x in a..b { ... }` — parsed and immediately desugared into
+  a block containing a `let` and a `while`; there is no dedicated for-loop
+  AST node, so every later stage — resolver, evaluator, bytecode compiler,
+  IR — needs no for-loop-specific support at all)
 - Function declarations
 - Return statements
 
@@ -102,7 +107,7 @@ resolves every variable and function reference.
 
 **Features**:
 - Assigns every `let`/`const`/parameter a stable slot index (function-frame-relative
-  for locals, a flat space for globals) — the evaluator addresses variables by
+  for locals, a flat space for globals) the evaluator addresses variables by
   slot, not by a runtime name lookup
 - Infers a concrete type for every expression using the same widening rules
   the evaluator's coercion uses, falling back to a dynamically-checked `Any`
@@ -114,7 +119,7 @@ resolves every variable and function reference.
   type-mismatch, and arity errors **before evaluation starts**, using the
   same diagnostic text the evaluator used to produce at runtime
 - Nested function declarations do not capture their enclosing function's
-  locals (only their own frame and the global scope are visible) — a
+  locals (only their own frame and the global scope are visible) a
   documented simplification, not a full closure model
 
 ### 4. Evaluation (Evaluator)
@@ -136,20 +141,23 @@ Executes the resolved AST using the Visitor pattern.
 ### 5. Bytecode Compiler (VM backend, part 1)
 **Location**: `src/bytecode/` (`opcode.rs`, `chunk.rs`, `compiler.rs`, `disassembler.rs`)
 
-Lowers the Resolver-annotated AST into bytecode `Chunk`s — one per function
-plus one for the top-level script — executed by the VM below, or inspected
+Lowers the Resolver-annotated AST into bytecode `Chunk`s one per function
+plus one for the top-level script executed by the VM below, or inspected
 via the built-in disassembler (`--dump-bytecode`).
 
 **Features**:
 - Small, generic instruction set (~35 opcodes) dispatching dynamically over
   the same tagged `Value` enum the evaluator uses
 - Trusts the Resolver completely: reads slot indices, function ids, and
-  resolved bindings straight off the AST — infallible, no error type
+  resolved bindings straight off the AST infallible, no error type
 - `++`/`--` and `&&`/`||` desugar to generic get/set/arithmetic/jump
   sequences instead of dedicated opcodes
+- `while` loops compile to the standard re-check-and-branch pattern, closed
+  by a single backward-jump opcode (`OP_LOOP`) back to the loop header the
+  only backward jump in the instruction set; every other jump is forward-only
 - Statement compilation is stack-neutral; every chunk ends in an explicit
   `RETURN`, and the implicit-return rule matches the evaluator exactly (only
-  a trailing expression statement produces a value — anything else produces
+  a trailing expression statement produces a value anything else produces
   `Unit`, the "no value" value)
 - Per-byte source-offset table in each chunk for error reporting
 - Disassembler prints one line per instruction: offset, source position,
@@ -158,20 +166,20 @@ via the built-in disassembler (`--dump-bytecode`).
 ### 6. Virtual Machine (VM backend, part 2)
 **Location**: `src/bytecode/vm.rs`
 
-A stack-based VM executing compiled chunks — the second, independently
+A stack-based VM executing compiled chunks  the second, independently
 verified execution engine (`--backend=vm`).
 
 **Features**:
 - One shared operand stack; one call frame per active call holding its own
   instruction pointer and local slots (direct slot indexing, no name lookups)
-- Calls are iterative, so Arc recursion consumes no host stack — but call
+- Calls are iterative, so Arc recursion consumes no host stack but call
   depth is capped at the same limit as the evaluator, with the same
   stack-overflow error message
 - Binary-operator semantics come from the same shared `apply_binary`
   function the evaluator uses, so the two backends cannot drift apart
 - Runtime errors carry source positions recovered from the chunks'
-  offset tables — same line/column rendering as evaluator errors
-- Halts on the first runtime error (the evaluator records and continues) —
+  offset tables same line/column rendering as evaluator errors
+- Halts on the first runtime error (the evaluator records and continues)
   identical behavior on error-free programs
 - Meaningfully faster than the tree-walker: ~1.7× on a recursive-fibonacci
   benchmark (`examples/bench.arc`)
@@ -183,16 +191,24 @@ With `--opt`, the resolved AST lowers to a three-address-code IR (virtual
 registers, basic blocks, explicit control-flow graph), runs a pass pipeline,
 then lowers back to bytecode for the VM to execute.
 
-**Passes** (each preserves behavior *including runtime errors* — a fold that
+**Passes** (each preserves behavior *including runtime errors*  a fold that
 would error doesn't fold, and only provably non-erroring instructions are
 eliminated or deduplicated):
-- **Constant folding** — evaluates constant expressions at compile time via
+- **Constant folding**  evaluates constant expressions at compile time via
   the same shared arithmetic both backends execute; constant branch
   conditions turn into unconditional jumps
-- **Dead code elimination** — deletes pure instructions with unused results
+- **Dead code elimination**  deletes pure instructions with unused results
   and blocks unreachable from entry
-- **Common subexpression elimination** (block-local) — reuses the result of
+- **Common subexpression elimination** (block-local) reuses the result of
   a repeated computation instead of recomputing it
+
+`while` loops lower to a header/body/exit block triple with one back-edge
+(the body jumping back to its own header) the IR's only cyclic control
+flow. All three passes stay correct across it: every register still has
+exactly one static definition site, so a loop body re-executing at runtime
+never confuses the single-pass dataflow the optimizer relies on. A
+constant-`false` loop condition folds away the entire loop body via the
+same dead-block elimination that prunes an `if`'s untaken branch.
 
 Inspect the IR before and after optimization:
 ```bash
@@ -251,6 +267,50 @@ if score == 10 {
 ```
 
 Conditions use truthiness: `false`, `0`, `0.0`, and `""` are false; everything else is true.
+
+### Loops
+
+#### While
+
+```arc
+let i = 0
+let sum = 0
+while i < 5 {
+    sum = sum + i
+    i = i + 1
+}
+print(sum)  // 10
+```
+
+`while` repeats its body for as long as the condition is truthy, re-checking
+before every iteration (so a false condition means the body never runs at
+all). `return` inside a loop exits the enclosing function immediately, same
+as anywhere else.
+
+#### For
+
+```arc
+let total = 0
+for i in 0..5 {
+    total = total + i
+}
+print(total)  // 10, since 0..5 is exclusive of 5
+```
+
+`for <name> in <start>..<end> { ... }` iterates `name` over the half-open
+range `[start, end)`. It is pure syntax sugar: the parser desugars it
+directly into
+```arc
+{
+    let <name> = <start>
+    while <name> < <end> {
+        <body>
+        <name> = <name> + 1
+    }
+}
+```
+so it inherits `while`'s semantics exactly, `<name>` is an ordinary mutable
+loop variable, scoped to the loop like any block-local `let`.
 
 ### User-Defined Functions
 
@@ -422,6 +482,22 @@ if <expression> {
     <statement>
     ...
 } else {
+    <statement>
+    ...
+}
+```
+
+### While
+```
+while <expression> {
+    <statement>
+    ...
+}
+```
+
+### For
+```
+for <identifier> in <expression>..<expression> {
     <statement>
     ...
 }
@@ -826,7 +902,7 @@ For production use, consider:
 ## Future Enhancements
 
 **Coming Soon**:
-- `while`/`for` loops
+- `break`/`continue`
 - Real closures (nested functions capturing enclosing locals)
 - Arrays and tuples
 - More built-in functions
