@@ -222,262 +222,271 @@
 <a href=#222 id=222 data-nosnippet>222</a>                        <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">3 </span>+ jump;
 <a href=#223 id=223 data-nosnippet>223</a>                    }
 <a href=#224 id=224 data-nosnippet>224</a>                }
-<a href=#225 id=225 data-nosnippet>225</a>                OpCode::Call =&gt; {
-<a href=#226 id=226 data-nosnippet>226</a>                    <span class="kw">let </span>function_id = chunk.read_u16(at + <span class="number">1</span>) <span class="kw">as </span>usize;
-<a href=#227 id=227 data-nosnippet>227</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">3</span>] <span class="kw">as </span>usize;
-<a href=#228 id=228 data-nosnippet>228</a>                    <span class="kw">let </span>callee = <span class="kw-2">&amp;</span>program.functions[function_id];
-<a href=#229 id=229 data-nosnippet>229</a>
-<a href=#230 id=230 data-nosnippet>230</a>                    <span class="comment">// Same limit and message as the tree-walker (its frame
-<a href=#231 id=231 data-nosnippet>231</a>                    // count excludes the script, so compare against ours - 1).
-<a href=#232 id=232 data-nosnippet>232</a>                    </span><span class="kw">if </span><span class="self">self</span>.frames.len() - <span class="number">1 </span>&gt;= ASTEvaluator::MAX_CALL_DEPTH {
-<a href=#233 id=233 data-nosnippet>233</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>((
-<a href=#234 id=234 data-nosnippet>234</a>                            <span class="macro">format!</span>(
-<a href=#235 id=235 data-nosnippet>235</a>                                <span class="string">"Stack overflow: maximum recursion depth ({}) exceeded while calling '{}'"</span>,
-<a href=#236 id=236 data-nosnippet>236</a>                                ASTEvaluator::MAX_CALL_DEPTH,
-<a href=#237 id=237 data-nosnippet>237</a>                                callee.name
-<a href=#238 id=238 data-nosnippet>238</a>                            ),
-<a href=#239 id=239 data-nosnippet>239</a>                            offset,
-<a href=#240 id=240 data-nosnippet>240</a>                        ));
-<a href=#241 id=241 data-nosnippet>241</a>                    }
-<a href=#242 id=242 data-nosnippet>242</a>
-<a href=#243 id=243 data-nosnippet>243</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, <span class="kw-2">&amp;</span>callee.name, offset)<span class="question-mark">?</span>;
-<a href=#244 id=244 data-nosnippet>244</a>                    <span class="comment">// Same inert filler the evaluator uses for locals that
-<a href=#245 id=245 data-nosnippet>245</a>                    // haven't been assigned yet.
-<a href=#246 id=246 data-nosnippet>246</a>                    </span><span class="kw">let </span><span class="kw-2">mut </span>locals = <span class="macro">vec!</span>[Value::Integer(<span class="number">0</span>); callee.frame_size <span class="kw">as </span>usize];
-<a href=#247 id=247 data-nosnippet>247</a>                    <span class="comment">// Parameters occupy slots 0..arity in order (asserted at
-<a href=#248 id=248 data-nosnippet>248</a>                    // compile time), so arguments drop straight in.
-<a href=#249 id=249 data-nosnippet>249</a>                    </span><span class="kw">for </span>(slot, value) <span class="kw">in </span>args.into_iter().enumerate() {
-<a href=#250 id=250 data-nosnippet>250</a>                        locals[slot] = value;
-<a href=#251 id=251 data-nosnippet>251</a>                    }
-<a href=#252 id=252 data-nosnippet>252</a>
-<a href=#253 id=253 data-nosnippet>253</a>                    <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">4</span>; <span class="comment">// return address
-<a href=#254 id=254 data-nosnippet>254</a>                    </span><span class="self">self</span>.frames.push(Frame { function: <span class="prelude-val">Some</span>(function_id), ip: <span class="number">0</span>, locals });
-<a href=#255 id=255 data-nosnippet>255</a>                }
-<a href=#256 id=256 data-nosnippet>256</a>                OpCode::Return =&gt; {
-<a href=#257 id=257 data-nosnippet>257</a>                    <span class="kw">let </span>value = <span class="self">self</span>.pop();
-<a href=#258 id=258 data-nosnippet>258</a>                    <span class="self">self</span>.frames.pop();
-<a href=#259 id=259 data-nosnippet>259</a>                    <span class="kw">if </span><span class="self">self</span>.frames.is_empty() {
-<a href=#260 id=260 data-nosnippet>260</a>                        <span class="comment">// Script finished: Unit means "didn't end in an
-<a href=#261 id=261 data-nosnippet>261</a>                        // expression statement", i.e. the evaluator's None.
-<a href=#262 id=262 data-nosnippet>262</a>                        </span><span class="self">self</span>.last_value = <span class="kw">match </span>value {
-<a href=#263 id=263 data-nosnippet>263</a>                            Value::Unit =&gt; <span class="prelude-val">None</span>,
-<a href=#264 id=264 data-nosnippet>264</a>                            v =&gt; <span class="prelude-val">Some</span>(v),
-<a href=#265 id=265 data-nosnippet>265</a>                        };
-<a href=#266 id=266 data-nosnippet>266</a>                        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
-<a href=#267 id=267 data-nosnippet>267</a>                    }
-<a href=#268 id=268 data-nosnippet>268</a>                    <span class="comment">// Leave the return value for the caller.
-<a href=#269 id=269 data-nosnippet>269</a>                    </span><span class="self">self</span>.stack.push(value);
-<a href=#270 id=270 data-nosnippet>270</a>                }
-<a href=#271 id=271 data-nosnippet>271</a>                OpCode::Print =&gt; {
-<a href=#272 id=272 data-nosnippet>272</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">1</span>] <span class="kw">as </span>usize;
-<a href=#273 id=273 data-nosnippet>273</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, <span class="string">"print"</span>, offset)<span class="question-mark">?</span>;
-<a href=#274 id=274 data-nosnippet>274</a>                    <span class="kw">let </span>line = args.iter().map(Value::to_string).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;().join(<span class="string">" "</span>);
-<a href=#275 id=275 data-nosnippet>275</a>                    <span class="macro">println!</span>(<span class="string">"{}"</span>, line);
-<a href=#276 id=276 data-nosnippet>276</a>                    <span class="self">self</span>.stack.push(Value::Unit); <span class="comment">// print has no value
-<a href=#277 id=277 data-nosnippet>277</a>                    </span><span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">2</span>;
-<a href=#278 id=278 data-nosnippet>278</a>                }
-<a href=#279 id=279 data-nosnippet>279</a>                OpCode::Max | OpCode::Min =&gt; {
-<a href=#280 id=280 data-nosnippet>280</a>                    <span class="kw">let </span>name = <span class="kw">if </span>op == OpCode::Max { <span class="string">"max" </span>} <span class="kw">else </span>{ <span class="string">"min" </span>};
-<a href=#281 id=281 data-nosnippet>281</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">1</span>] <span class="kw">as </span>usize;
-<a href=#282 id=282 data-nosnippet>282</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, name, offset)<span class="question-mark">?</span>;
-<a href=#283 id=283 data-nosnippet>283</a>                    <span class="kw">let </span><span class="prelude-val">Some</span>((first, rest)) = args.split_first() <span class="kw">else </span>{
-<a href=#284 id=284 data-nosnippet>284</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>((<span class="macro">format!</span>(<span class="string">"{}() requires at least one argument"</span>, name), offset));
-<a href=#285 id=285 data-nosnippet>285</a>                    };
-<a href=#286 id=286 data-nosnippet>286</a>                    <span class="kw">let </span>keep_current = <span class="kw">if </span>op == OpCode::Max {
-<a href=#287 id=287 data-nosnippet>287</a>                        std::cmp::Ordering::Less
-<a href=#288 id=288 data-nosnippet>288</a>                    } <span class="kw">else </span>{
-<a href=#289 id=289 data-nosnippet>289</a>                        std::cmp::Ordering::Greater
-<a href=#290 id=290 data-nosnippet>290</a>                    };
-<a href=#291 id=291 data-nosnippet>291</a>                    <span class="kw">let </span><span class="kw-2">mut </span>current = first.clone();
-<a href=#292 id=292 data-nosnippet>292</a>                    <span class="kw">for </span>v <span class="kw">in </span>rest {
-<a href=#293 id=293 data-nosnippet>293</a>                        <span class="kw">match </span>current.compare(v) {
-<a href=#294 id=294 data-nosnippet>294</a>                            <span class="prelude-val">Ok</span>(ordering) <span class="kw">if </span>ordering == keep_current =&gt; current = v.clone(),
-<a href=#295 id=295 data-nosnippet>295</a>                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) =&gt; (),
-<a href=#296 id=296 data-nosnippet>296</a>                            <span class="prelude-val">Err</span>(e) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>((<span class="macro">format!</span>(<span class="string">"{}() comparison error: {}"</span>, name, e), offset)),
-<a href=#297 id=297 data-nosnippet>297</a>                        }
-<a href=#298 id=298 data-nosnippet>298</a>                    }
-<a href=#299 id=299 data-nosnippet>299</a>                    <span class="self">self</span>.stack.push(current);
-<a href=#300 id=300 data-nosnippet>300</a>                    <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">2</span>;
-<a href=#301 id=301 data-nosnippet>301</a>                }
-<a href=#302 id=302 data-nosnippet>302</a>            }
-<a href=#303 id=303 data-nosnippet>303</a>        }
-<a href=#304 id=304 data-nosnippet>304</a>    }
-<a href=#305 id=305 data-nosnippet>305</a>
-<a href=#306 id=306 data-nosnippet>306</a>    <span class="doccomment">/// Maps an arithmetic/comparison opcode back to the operator kind
-<a href=#307 id=307 data-nosnippet>307</a>    /// [`apply_binary`] speaks (the inverse of the compiler's lowering).
-<a href=#308 id=308 data-nosnippet>308</a>    </span><span class="kw">fn </span>binary_kind(op: OpCode) -&gt; ASTBinaryOperatorKind {
-<a href=#309 id=309 data-nosnippet>309</a>        <span class="kw">use </span>ASTBinaryOperatorKind::<span class="kw-2">*</span>;
-<a href=#310 id=310 data-nosnippet>310</a>        <span class="kw">match </span>op {
-<a href=#311 id=311 data-nosnippet>311</a>            OpCode::Add =&gt; Plus,
-<a href=#312 id=312 data-nosnippet>312</a>            OpCode::Subtract =&gt; Minus,
-<a href=#313 id=313 data-nosnippet>313</a>            OpCode::Multiply =&gt; Multiply,
-<a href=#314 id=314 data-nosnippet>314</a>            OpCode::Divide =&gt; Divide,
-<a href=#315 id=315 data-nosnippet>315</a>            OpCode::Modulo =&gt; Modulo,
-<a href=#316 id=316 data-nosnippet>316</a>            OpCode::Power =&gt; Exponentiation,
-<a href=#317 id=317 data-nosnippet>317</a>            OpCode::BitAnd =&gt; BitwiseAnd,
-<a href=#318 id=318 data-nosnippet>318</a>            OpCode::BitOr =&gt; BitwiseOr,
-<a href=#319 id=319 data-nosnippet>319</a>            OpCode::BitXor =&gt; BitwiseXor,
-<a href=#320 id=320 data-nosnippet>320</a>            OpCode::ShiftLeft =&gt; LeftShift,
-<a href=#321 id=321 data-nosnippet>321</a>            OpCode::ShiftRight =&gt; RightShift,
-<a href=#322 id=322 data-nosnippet>322</a>            OpCode::Equal =&gt; Equal,
-<a href=#323 id=323 data-nosnippet>323</a>            OpCode::NotEqual =&gt; NotEqual,
-<a href=#324 id=324 data-nosnippet>324</a>            OpCode::Less =&gt; Less,
-<a href=#325 id=325 data-nosnippet>325</a>            OpCode::Greater =&gt; Greater,
-<a href=#326 id=326 data-nosnippet>326</a>            OpCode::LessEqual =&gt; LessEqual,
-<a href=#327 id=327 data-nosnippet>327</a>            OpCode::GreaterEqual =&gt; GreaterEqual,
-<a href=#328 id=328 data-nosnippet>328</a>            <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(<span class="string">"not a binary opcode: {:?}"</span>, op),
-<a href=#329 id=329 data-nosnippet>329</a>        }
-<a href=#330 id=330 data-nosnippet>330</a>    }
-<a href=#331 id=331 data-nosnippet>331</a>}
-<a href=#332 id=332 data-nosnippet>332</a>
-<a href=#333 id=333 data-nosnippet>333</a><span class="attr">#[cfg(test)]
-<a href=#334 id=334 data-nosnippet>334</a></span><span class="kw">mod </span>tests {
-<a href=#335 id=335 data-nosnippet>335</a>    <span class="kw">use </span>super::<span class="kw-2">*</span>;
-<a href=#336 id=336 data-nosnippet>336</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::lexer::Lexer;
-<a href=#337 id=337 data-nosnippet>337</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::parser::Parser;
-<a href=#338 id=338 data-nosnippet>338</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::resolver::Resolver;
-<a href=#339 id=339 data-nosnippet>339</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::Ast;
-<a href=#340 id=340 data-nosnippet>340</a>    <span class="kw">use </span><span class="kw">crate</span>::bytecode::compiler::BytecodeCompiler;
-<a href=#341 id=341 data-nosnippet>341</a>
-<a href=#342 id=342 data-nosnippet>342</a>    <span class="kw">struct </span>Outcome {
-<a href=#343 id=343 data-nosnippet>343</a>        last_value: <span class="prelude-ty">Option</span>&lt;Value&gt;,
-<a href=#344 id=344 data-nosnippet>344</a>        errors: Vec&lt;String&gt;,
-<a href=#345 id=345 data-nosnippet>345</a>    }
-<a href=#346 id=346 data-nosnippet>346</a>
-<a href=#347 id=347 data-nosnippet>347</a>    <span class="doccomment">/// Runs `source` on both backends and returns (tree-walker, VM)
-<a href=#348 id=348 data-nosnippet>348</a>    /// outcomes. Panics on parse/resolve errors — these tests are about
-<a href=#349 id=349 data-nosnippet>349</a>    /// execution parity, not upstream diagnostics.
-<a href=#350 id=350 data-nosnippet>350</a>    </span><span class="kw">fn </span>run_both(source: <span class="kw-2">&amp;</span>str) -&gt; (Outcome, Outcome) {
-<a href=#351 id=351 data-nosnippet>351</a>        <span class="kw">let </span><span class="kw-2">mut </span>lexer = Lexer::new(source);
-<a href=#352 id=352 data-nosnippet>352</a>        <span class="kw">let </span><span class="kw-2">mut </span>tokens = Vec::new();
-<a href=#353 id=353 data-nosnippet>353</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(token) = lexer.next_token() {
-<a href=#354 id=354 data-nosnippet>354</a>            tokens.push(token);
-<a href=#355 id=355 data-nosnippet>355</a>        }
-<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">let </span><span class="kw-2">mut </span>parser = Parser::new(tokens);
-<a href=#357 id=357 data-nosnippet>357</a>        <span class="kw">let </span><span class="kw-2">mut </span>ast = Ast::new();
-<a href=#358 id=358 data-nosnippet>358</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(stmt) = parser.next_statement() {
-<a href=#359 id=359 data-nosnippet>359</a>            ast.add_statement(stmt);
-<a href=#360 id=360 data-nosnippet>360</a>        }
-<a href=#361 id=361 data-nosnippet>361</a>        <span class="macro">assert!</span>(parser.diagnostics.is_empty(), <span class="string">"parse errors: {:?}"</span>, parser.diagnostics.iter().map(|d| <span class="kw-2">&amp;</span>d.message).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;());
-<a href=#362 id=362 data-nosnippet>362</a>
-<a href=#363 id=363 data-nosnippet>363</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolver = Resolver::new();
-<a href=#364 id=364 data-nosnippet>364</a>        resolver.resolve(<span class="kw-2">&amp;</span>ast);
-<a href=#365 id=365 data-nosnippet>365</a>        <span class="macro">assert!</span>(!resolver.has_errors(), <span class="string">"resolve errors: {:?}"</span>, resolver.diagnostics.iter().map(|d| <span class="kw-2">&amp;</span>d.message).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;());
+<a href=#225 id=225 data-nosnippet>225</a>                OpCode::Loop =&gt; {
+<a href=#226 id=226 data-nosnippet>226</a>                    <span class="kw">let </span>distance = chunk.read_u16(at + <span class="number">1</span>) <span class="kw">as </span>usize;
+<a href=#227 id=227 data-nosnippet>227</a>                    <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">3 </span>- distance;
+<a href=#228 id=228 data-nosnippet>228</a>                }
+<a href=#229 id=229 data-nosnippet>229</a>                OpCode::Call =&gt; {
+<a href=#230 id=230 data-nosnippet>230</a>                    <span class="kw">let </span>function_id = chunk.read_u16(at + <span class="number">1</span>) <span class="kw">as </span>usize;
+<a href=#231 id=231 data-nosnippet>231</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">3</span>] <span class="kw">as </span>usize;
+<a href=#232 id=232 data-nosnippet>232</a>                    <span class="kw">let </span>callee = <span class="kw-2">&amp;</span>program.functions[function_id];
+<a href=#233 id=233 data-nosnippet>233</a>
+<a href=#234 id=234 data-nosnippet>234</a>                    <span class="comment">// Same limit and message as the tree-walker (its frame
+<a href=#235 id=235 data-nosnippet>235</a>                    // count excludes the script, so compare against ours - 1).
+<a href=#236 id=236 data-nosnippet>236</a>                    </span><span class="kw">if </span><span class="self">self</span>.frames.len() - <span class="number">1 </span>&gt;= ASTEvaluator::MAX_CALL_DEPTH {
+<a href=#237 id=237 data-nosnippet>237</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>((
+<a href=#238 id=238 data-nosnippet>238</a>                            <span class="macro">format!</span>(
+<a href=#239 id=239 data-nosnippet>239</a>                                <span class="string">"Stack overflow: maximum recursion depth ({}) exceeded while calling '{}'"</span>,
+<a href=#240 id=240 data-nosnippet>240</a>                                ASTEvaluator::MAX_CALL_DEPTH,
+<a href=#241 id=241 data-nosnippet>241</a>                                callee.name
+<a href=#242 id=242 data-nosnippet>242</a>                            ),
+<a href=#243 id=243 data-nosnippet>243</a>                            offset,
+<a href=#244 id=244 data-nosnippet>244</a>                        ));
+<a href=#245 id=245 data-nosnippet>245</a>                    }
+<a href=#246 id=246 data-nosnippet>246</a>
+<a href=#247 id=247 data-nosnippet>247</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, <span class="kw-2">&amp;</span>callee.name, offset)<span class="question-mark">?</span>;
+<a href=#248 id=248 data-nosnippet>248</a>                    <span class="comment">// Same inert filler the evaluator uses for locals that
+<a href=#249 id=249 data-nosnippet>249</a>                    // haven't been assigned yet.
+<a href=#250 id=250 data-nosnippet>250</a>                    </span><span class="kw">let </span><span class="kw-2">mut </span>locals = <span class="macro">vec!</span>[Value::Integer(<span class="number">0</span>); callee.frame_size <span class="kw">as </span>usize];
+<a href=#251 id=251 data-nosnippet>251</a>                    <span class="comment">// Parameters occupy slots 0..arity in order (asserted at
+<a href=#252 id=252 data-nosnippet>252</a>                    // compile time), so arguments drop straight in.
+<a href=#253 id=253 data-nosnippet>253</a>                    </span><span class="kw">for </span>(slot, value) <span class="kw">in </span>args.into_iter().enumerate() {
+<a href=#254 id=254 data-nosnippet>254</a>                        locals[slot] = value;
+<a href=#255 id=255 data-nosnippet>255</a>                    }
+<a href=#256 id=256 data-nosnippet>256</a>
+<a href=#257 id=257 data-nosnippet>257</a>                    <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">4</span>; <span class="comment">// return address
+<a href=#258 id=258 data-nosnippet>258</a>                    </span><span class="self">self</span>.frames.push(Frame { function: <span class="prelude-val">Some</span>(function_id), ip: <span class="number">0</span>, locals });
+<a href=#259 id=259 data-nosnippet>259</a>                }
+<a href=#260 id=260 data-nosnippet>260</a>                OpCode::Return =&gt; {
+<a href=#261 id=261 data-nosnippet>261</a>                    <span class="kw">let </span>value = <span class="self">self</span>.pop();
+<a href=#262 id=262 data-nosnippet>262</a>                    <span class="self">self</span>.frames.pop();
+<a href=#263 id=263 data-nosnippet>263</a>                    <span class="kw">if </span><span class="self">self</span>.frames.is_empty() {
+<a href=#264 id=264 data-nosnippet>264</a>                        <span class="comment">// Script finished: Unit means "didn't end in an
+<a href=#265 id=265 data-nosnippet>265</a>                        // expression statement", i.e. the evaluator's None.
+<a href=#266 id=266 data-nosnippet>266</a>                        </span><span class="self">self</span>.last_value = <span class="kw">match </span>value {
+<a href=#267 id=267 data-nosnippet>267</a>                            Value::Unit =&gt; <span class="prelude-val">None</span>,
+<a href=#268 id=268 data-nosnippet>268</a>                            v =&gt; <span class="prelude-val">Some</span>(v),
+<a href=#269 id=269 data-nosnippet>269</a>                        };
+<a href=#270 id=270 data-nosnippet>270</a>                        <span class="kw">return </span><span class="prelude-val">Ok</span>(());
+<a href=#271 id=271 data-nosnippet>271</a>                    }
+<a href=#272 id=272 data-nosnippet>272</a>                    <span class="comment">// Leave the return value for the caller.
+<a href=#273 id=273 data-nosnippet>273</a>                    </span><span class="self">self</span>.stack.push(value);
+<a href=#274 id=274 data-nosnippet>274</a>                }
+<a href=#275 id=275 data-nosnippet>275</a>                OpCode::Print =&gt; {
+<a href=#276 id=276 data-nosnippet>276</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">1</span>] <span class="kw">as </span>usize;
+<a href=#277 id=277 data-nosnippet>277</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, <span class="string">"print"</span>, offset)<span class="question-mark">?</span>;
+<a href=#278 id=278 data-nosnippet>278</a>                    <span class="kw">let </span>line = args.iter().map(Value::to_string).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;().join(<span class="string">" "</span>);
+<a href=#279 id=279 data-nosnippet>279</a>                    <span class="macro">println!</span>(<span class="string">"{}"</span>, line);
+<a href=#280 id=280 data-nosnippet>280</a>                    <span class="self">self</span>.stack.push(Value::Unit); <span class="comment">// print has no value
+<a href=#281 id=281 data-nosnippet>281</a>                    </span><span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">2</span>;
+<a href=#282 id=282 data-nosnippet>282</a>                }
+<a href=#283 id=283 data-nosnippet>283</a>                OpCode::Max | OpCode::Min =&gt; {
+<a href=#284 id=284 data-nosnippet>284</a>                    <span class="kw">let </span>name = <span class="kw">if </span>op == OpCode::Max { <span class="string">"max" </span>} <span class="kw">else </span>{ <span class="string">"min" </span>};
+<a href=#285 id=285 data-nosnippet>285</a>                    <span class="kw">let </span>argc = chunk.code[at + <span class="number">1</span>] <span class="kw">as </span>usize;
+<a href=#286 id=286 data-nosnippet>286</a>                    <span class="kw">let </span>args = <span class="self">self</span>.pop_args(argc, name, offset)<span class="question-mark">?</span>;
+<a href=#287 id=287 data-nosnippet>287</a>                    <span class="kw">let </span><span class="prelude-val">Some</span>((first, rest)) = args.split_first() <span class="kw">else </span>{
+<a href=#288 id=288 data-nosnippet>288</a>                        <span class="kw">return </span><span class="prelude-val">Err</span>((<span class="macro">format!</span>(<span class="string">"{}() requires at least one argument"</span>, name), offset));
+<a href=#289 id=289 data-nosnippet>289</a>                    };
+<a href=#290 id=290 data-nosnippet>290</a>                    <span class="kw">let </span>keep_current = <span class="kw">if </span>op == OpCode::Max {
+<a href=#291 id=291 data-nosnippet>291</a>                        std::cmp::Ordering::Less
+<a href=#292 id=292 data-nosnippet>292</a>                    } <span class="kw">else </span>{
+<a href=#293 id=293 data-nosnippet>293</a>                        std::cmp::Ordering::Greater
+<a href=#294 id=294 data-nosnippet>294</a>                    };
+<a href=#295 id=295 data-nosnippet>295</a>                    <span class="kw">let </span><span class="kw-2">mut </span>current = first.clone();
+<a href=#296 id=296 data-nosnippet>296</a>                    <span class="kw">for </span>v <span class="kw">in </span>rest {
+<a href=#297 id=297 data-nosnippet>297</a>                        <span class="kw">match </span>current.compare(v) {
+<a href=#298 id=298 data-nosnippet>298</a>                            <span class="prelude-val">Ok</span>(ordering) <span class="kw">if </span>ordering == keep_current =&gt; current = v.clone(),
+<a href=#299 id=299 data-nosnippet>299</a>                            <span class="prelude-val">Ok</span>(<span class="kw">_</span>) =&gt; (),
+<a href=#300 id=300 data-nosnippet>300</a>                            <span class="prelude-val">Err</span>(e) =&gt; <span class="kw">return </span><span class="prelude-val">Err</span>((<span class="macro">format!</span>(<span class="string">"{}() comparison error: {}"</span>, name, e), offset)),
+<a href=#301 id=301 data-nosnippet>301</a>                        }
+<a href=#302 id=302 data-nosnippet>302</a>                    }
+<a href=#303 id=303 data-nosnippet>303</a>                    <span class="self">self</span>.stack.push(current);
+<a href=#304 id=304 data-nosnippet>304</a>                    <span class="self">self</span>.frames[frame_idx].ip = at + <span class="number">2</span>;
+<a href=#305 id=305 data-nosnippet>305</a>                }
+<a href=#306 id=306 data-nosnippet>306</a>            }
+<a href=#307 id=307 data-nosnippet>307</a>        }
+<a href=#308 id=308 data-nosnippet>308</a>    }
+<a href=#309 id=309 data-nosnippet>309</a>
+<a href=#310 id=310 data-nosnippet>310</a>    <span class="doccomment">/// Maps an arithmetic/comparison opcode back to the operator kind
+<a href=#311 id=311 data-nosnippet>311</a>    /// [`apply_binary`] speaks (the inverse of the compiler's lowering).
+<a href=#312 id=312 data-nosnippet>312</a>    </span><span class="kw">fn </span>binary_kind(op: OpCode) -&gt; ASTBinaryOperatorKind {
+<a href=#313 id=313 data-nosnippet>313</a>        <span class="kw">use </span>ASTBinaryOperatorKind::<span class="kw-2">*</span>;
+<a href=#314 id=314 data-nosnippet>314</a>        <span class="kw">match </span>op {
+<a href=#315 id=315 data-nosnippet>315</a>            OpCode::Add =&gt; Plus,
+<a href=#316 id=316 data-nosnippet>316</a>            OpCode::Subtract =&gt; Minus,
+<a href=#317 id=317 data-nosnippet>317</a>            OpCode::Multiply =&gt; Multiply,
+<a href=#318 id=318 data-nosnippet>318</a>            OpCode::Divide =&gt; Divide,
+<a href=#319 id=319 data-nosnippet>319</a>            OpCode::Modulo =&gt; Modulo,
+<a href=#320 id=320 data-nosnippet>320</a>            OpCode::Power =&gt; Exponentiation,
+<a href=#321 id=321 data-nosnippet>321</a>            OpCode::BitAnd =&gt; BitwiseAnd,
+<a href=#322 id=322 data-nosnippet>322</a>            OpCode::BitOr =&gt; BitwiseOr,
+<a href=#323 id=323 data-nosnippet>323</a>            OpCode::BitXor =&gt; BitwiseXor,
+<a href=#324 id=324 data-nosnippet>324</a>            OpCode::ShiftLeft =&gt; LeftShift,
+<a href=#325 id=325 data-nosnippet>325</a>            OpCode::ShiftRight =&gt; RightShift,
+<a href=#326 id=326 data-nosnippet>326</a>            OpCode::Equal =&gt; Equal,
+<a href=#327 id=327 data-nosnippet>327</a>            OpCode::NotEqual =&gt; NotEqual,
+<a href=#328 id=328 data-nosnippet>328</a>            OpCode::Less =&gt; Less,
+<a href=#329 id=329 data-nosnippet>329</a>            OpCode::Greater =&gt; Greater,
+<a href=#330 id=330 data-nosnippet>330</a>            OpCode::LessEqual =&gt; LessEqual,
+<a href=#331 id=331 data-nosnippet>331</a>            OpCode::GreaterEqual =&gt; GreaterEqual,
+<a href=#332 id=332 data-nosnippet>332</a>            <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(<span class="string">"not a binary opcode: {:?}"</span>, op),
+<a href=#333 id=333 data-nosnippet>333</a>        }
+<a href=#334 id=334 data-nosnippet>334</a>    }
+<a href=#335 id=335 data-nosnippet>335</a>}
+<a href=#336 id=336 data-nosnippet>336</a>
+<a href=#337 id=337 data-nosnippet>337</a><span class="attr">#[cfg(test)]
+<a href=#338 id=338 data-nosnippet>338</a></span><span class="kw">mod </span>tests {
+<a href=#339 id=339 data-nosnippet>339</a>    <span class="kw">use </span>super::<span class="kw-2">*</span>;
+<a href=#340 id=340 data-nosnippet>340</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::lexer::Lexer;
+<a href=#341 id=341 data-nosnippet>341</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::parser::Parser;
+<a href=#342 id=342 data-nosnippet>342</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::resolver::Resolver;
+<a href=#343 id=343 data-nosnippet>343</a>    <span class="kw">use </span><span class="kw">crate</span>::ast::Ast;
+<a href=#344 id=344 data-nosnippet>344</a>    <span class="kw">use </span><span class="kw">crate</span>::bytecode::compiler::BytecodeCompiler;
+<a href=#345 id=345 data-nosnippet>345</a>
+<a href=#346 id=346 data-nosnippet>346</a>    <span class="kw">struct </span>Outcome {
+<a href=#347 id=347 data-nosnippet>347</a>        last_value: <span class="prelude-ty">Option</span>&lt;Value&gt;,
+<a href=#348 id=348 data-nosnippet>348</a>        errors: Vec&lt;String&gt;,
+<a href=#349 id=349 data-nosnippet>349</a>    }
+<a href=#350 id=350 data-nosnippet>350</a>
+<a href=#351 id=351 data-nosnippet>351</a>    <span class="doccomment">/// Runs `source` on both backends and returns (tree-walker, VM)
+<a href=#352 id=352 data-nosnippet>352</a>    /// outcomes. Panics on parse/resolve errors — these tests are about
+<a href=#353 id=353 data-nosnippet>353</a>    /// execution parity, not upstream diagnostics.
+<a href=#354 id=354 data-nosnippet>354</a>    </span><span class="kw">fn </span>run_both(source: <span class="kw-2">&amp;</span>str) -&gt; (Outcome, Outcome) {
+<a href=#355 id=355 data-nosnippet>355</a>        <span class="kw">let </span><span class="kw-2">mut </span>lexer = Lexer::new(source);
+<a href=#356 id=356 data-nosnippet>356</a>        <span class="kw">let </span><span class="kw-2">mut </span>tokens = Vec::new();
+<a href=#357 id=357 data-nosnippet>357</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(token) = lexer.next_token() {
+<a href=#358 id=358 data-nosnippet>358</a>            tokens.push(token);
+<a href=#359 id=359 data-nosnippet>359</a>        }
+<a href=#360 id=360 data-nosnippet>360</a>        <span class="kw">let </span><span class="kw-2">mut </span>parser = Parser::new(tokens);
+<a href=#361 id=361 data-nosnippet>361</a>        <span class="kw">let </span><span class="kw-2">mut </span>ast = Ast::new();
+<a href=#362 id=362 data-nosnippet>362</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(stmt) = parser.next_statement() {
+<a href=#363 id=363 data-nosnippet>363</a>            ast.add_statement(stmt);
+<a href=#364 id=364 data-nosnippet>364</a>        }
+<a href=#365 id=365 data-nosnippet>365</a>        <span class="macro">assert!</span>(parser.diagnostics.is_empty(), <span class="string">"parse errors: {:?}"</span>, parser.diagnostics.iter().map(|d| <span class="kw-2">&amp;</span>d.message).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;());
 <a href=#366 id=366 data-nosnippet>366</a>
-<a href=#367 id=367 data-nosnippet>367</a>        <span class="kw">let </span><span class="kw-2">mut </span>evaluator = ASTEvaluator::new(resolver.global_slot_count());
-<a href=#368 id=368 data-nosnippet>368</a>        evaluator.execute(<span class="kw-2">&amp;</span>ast);
-<a href=#369 id=369 data-nosnippet>369</a>        <span class="kw">let </span>tree = Outcome {
-<a href=#370 id=370 data-nosnippet>370</a>            last_value: evaluator.last_value.clone(),
-<a href=#371 id=371 data-nosnippet>371</a>            errors: evaluator.errors.iter().map(|d| d.message.clone()).collect(),
-<a href=#372 id=372 data-nosnippet>372</a>        };
-<a href=#373 id=373 data-nosnippet>373</a>
-<a href=#374 id=374 data-nosnippet>374</a>        <span class="kw">let </span>program = BytecodeCompiler::new(resolver.function_count()).compile(<span class="kw-2">&amp;</span>ast);
-<a href=#375 id=375 data-nosnippet>375</a>        <span class="kw">let </span><span class="kw-2">mut </span>vm = VM::new(<span class="kw-2">&amp;</span>program, resolver.global_slot_count());
-<a href=#376 id=376 data-nosnippet>376</a>        vm.run();
-<a href=#377 id=377 data-nosnippet>377</a>        <span class="kw">let </span>vm_outcome = Outcome {
-<a href=#378 id=378 data-nosnippet>378</a>            last_value: vm.last_value.clone(),
-<a href=#379 id=379 data-nosnippet>379</a>            errors: vm.errors.iter().map(|d| d.message.clone()).collect(),
-<a href=#380 id=380 data-nosnippet>380</a>        };
-<a href=#381 id=381 data-nosnippet>381</a>
-<a href=#382 id=382 data-nosnippet>382</a>        (tree, vm_outcome)
-<a href=#383 id=383 data-nosnippet>383</a>    }
-<a href=#384 id=384 data-nosnippet>384</a>
-<a href=#385 id=385 data-nosnippet>385</a>    <span class="kw">fn </span>assert_parity(source: <span class="kw-2">&amp;</span>str) {
-<a href=#386 id=386 data-nosnippet>386</a>        <span class="kw">let </span>(tree, vm) = run_both(source);
-<a href=#387 id=387 data-nosnippet>387</a>        <span class="macro">assert_eq!</span>(tree.last_value, vm.last_value, <span class="string">"last_value diverged on: {}"</span>, source);
-<a href=#388 id=388 data-nosnippet>388</a>        <span class="macro">assert_eq!</span>(tree.errors, vm.errors, <span class="string">"errors diverged on: {}"</span>, source);
-<a href=#389 id=389 data-nosnippet>389</a>    }
-<a href=#390 id=390 data-nosnippet>390</a>
-<a href=#391 id=391 data-nosnippet>391</a>    <span class="attr">#[test]
-<a href=#392 id=392 data-nosnippet>392</a>    </span><span class="kw">fn </span>test_golden_suite_parity() {
-<a href=#393 id=393 data-nosnippet>393</a>        <span class="comment">// Every program the Phase 2 golden compile suite used, now checked
-<a href=#394 id=394 data-nosnippet>394</a>        // for identical results across both execution backends.
-<a href=#395 id=395 data-nosnippet>395</a>        </span><span class="kw">let </span>programs = [
-<a href=#396 id=396 data-nosnippet>396</a>            <span class="string">"1 + 2 * 3;"</span>,
-<a href=#397 id=397 data-nosnippet>397</a>            <span class="string">"2 ** 10;"</span>,
-<a href=#398 id=398 data-nosnippet>398</a>            <span class="string">"10 % 3;"</span>,
-<a href=#399 id=399 data-nosnippet>399</a>            <span class="string">"7 / 2;"</span>,
-<a href=#400 id=400 data-nosnippet>400</a>            <span class="string">"7.5 / 2.5;"</span>,
-<a href=#401 id=401 data-nosnippet>401</a>            <span class="string">"1 + 2.5;"</span>,
-<a href=#402 id=402 data-nosnippet>402</a>            <span class="string">"\"con\" + \"cat\";"</span>,
-<a href=#403 id=403 data-nosnippet>403</a>            <span class="string">"12 &amp; 10; 12 | 10; 12 ^ 10; 8 &lt;&lt; 2; 32 &gt;&gt; 2;"</span>,
-<a href=#404 id=404 data-nosnippet>404</a>            <span class="string">"-5; +5; !true; !0;"</span>,
-<a href=#405 id=405 data-nosnippet>405</a>            <span class="string">"let x = 1; x = x + 1; x;"</span>,
-<a href=#406 id=406 data-nosnippet>406</a>            <span class="string">"let x = 1.5; x = 2; x + 0.5;"</span>,
-<a href=#407 id=407 data-nosnippet>407</a>            <span class="string">"true &amp;&amp; false || !true;"</span>,
-<a href=#408 id=408 data-nosnippet>408</a>            <span class="string">"1 &lt; 2 &amp;&amp; 2 &lt;= 2 &amp;&amp; 3 &gt; 2 &amp;&amp; 3 &gt;= 3 &amp;&amp; 1 == 1 &amp;&amp; 1 != 2;"</span>,
-<a href=#409 id=409 data-nosnippet>409</a>            <span class="string">"10 == 10.0;"</span>,
-<a href=#410 id=410 data-nosnippet>410</a>            <span class="string">"let r = 0; if true { r = 1; } else { r = 2; } r;"</span>,
-<a href=#411 id=411 data-nosnippet>411</a>            <span class="string">"let r = 0; if false { r = 1; } else { r = 2; } r;"</span>,
-<a href=#412 id=412 data-nosnippet>412</a>            <span class="string">"let v = 5; { let v = 99; } v;"</span>,
-<a href=#413 id=413 data-nosnippet>413</a>            <span class="string">"fn add(a, b) { return a + b; } add(2, 3);"</span>,
-<a href=#414 id=414 data-nosnippet>414</a>            <span class="string">"fn add(a: Int, b: Int) { return a + b; } add(2, 3);"</span>,
-<a href=#415 id=415 data-nosnippet>415</a>            <span class="string">"fn fact(n) { if n &lt;= 1 { return 1; } else { return n * fact(n - 1); } } fact(10);"</span>,
-<a href=#416 id=416 data-nosnippet>416</a>            <span class="string">"fn is_even(n) { if n == 0 { return true; } else { return is_odd(n - 1); } } \
-<a href=#417 id=417 data-nosnippet>417</a>             fn is_odd(n) { if n == 0 { return false; } else { return is_even(n - 1); } } \
-<a href=#418 id=418 data-nosnippet>418</a>             is_even(10);"</span>,
-<a href=#419 id=419 data-nosnippet>419</a>            <span class="string">"let counter = 10; ++counter; counter++; --counter; counter--;"</span>,
-<a href=#420 id=420 data-nosnippet>420</a>            <span class="string">"let c = 10; ++c; c;"</span>,
-<a href=#421 id=421 data-nosnippet>421</a>            <span class="string">"let c = 10; c++; c;"</span>,
-<a href=#422 id=422 data-nosnippet>422</a>            <span class="string">"min(4, 2, 9, 1); max(4, 2, 9, 1);"</span>,
-<a href=#423 id=423 data-nosnippet>423</a>            <span class="string">"min(3.5, 2, 4.1);"</span>,
-<a href=#424 id=424 data-nosnippet>424</a>            <span class="string">"fn f() { 7; } f();"</span>,
-<a href=#425 id=425 data-nosnippet>425</a>            <span class="string">"fn sq(n: Int) { return n * n; } sq(2) + sq(3);"</span>,
-<a href=#426 id=426 data-nosnippet>426</a>            <span class="string">"let g = 41; fn get() { return g + 1; } get();"</span>,
-<a href=#427 id=427 data-nosnippet>427</a>        ];
-<a href=#428 id=428 data-nosnippet>428</a>        <span class="kw">for </span>source <span class="kw">in </span>programs {
-<a href=#429 id=429 data-nosnippet>429</a>            assert_parity(source);
-<a href=#430 id=430 data-nosnippet>430</a>        }
-<a href=#431 id=431 data-nosnippet>431</a>    }
-<a href=#432 id=432 data-nosnippet>432</a>
-<a href=#433 id=433 data-nosnippet>433</a>    <span class="attr">#[test]
-<a href=#434 id=434 data-nosnippet>434</a>    </span><span class="kw">fn </span>test_runtime_error_parity() {
-<a href=#435 id=435 data-nosnippet>435</a>        <span class="comment">// Single-statement failures: both backends report the same one
-<a href=#436 id=436 data-nosnippet>436</a>        // error. (Multi-statement error recovery intentionally differs: the
-<a href=#437 id=437 data-nosnippet>437</a>        // tree-walker keeps going, the VM halts — see module docs.)
-<a href=#438 id=438 data-nosnippet>438</a>        </span><span class="kw">for </span>source <span class="kw">in </span>[
-<a href=#439 id=439 data-nosnippet>439</a>            <span class="string">"1 / 0;"</span>,
-<a href=#440 id=440 data-nosnippet>440</a>            <span class="string">"1.0 / 0.0;"</span>,
-<a href=#441 id=441 data-nosnippet>441</a>            <span class="string">"10 % 0;"</span>,
-<a href=#442 id=442 data-nosnippet>442</a>            <span class="string">r#"fn f() { let x = 1; } print(f());"#</span>,
-<a href=#443 id=443 data-nosnippet>443</a>            <span class="string">r#"print(print("x"));"#</span>,
-<a href=#444 id=444 data-nosnippet>444</a>        ] {
-<a href=#445 id=445 data-nosnippet>445</a>            assert_parity(source);
-<a href=#446 id=446 data-nosnippet>446</a>        }
-<a href=#447 id=447 data-nosnippet>447</a>    }
-<a href=#448 id=448 data-nosnippet>448</a>
-<a href=#449 id=449 data-nosnippet>449</a>    <span class="attr">#[test]
-<a href=#450 id=450 data-nosnippet>450</a>    </span><span class="kw">fn </span>test_stack_overflow_parity() {
-<a href=#451 id=451 data-nosnippet>451</a>        <span class="kw">let </span>(tree, vm) = run_both(<span class="string">"fn boom(n) { return boom(n + 1); } boom(0);"</span>);
-<a href=#452 id=452 data-nosnippet>452</a>        <span class="macro">assert_eq!</span>(tree.errors, vm.errors);
-<a href=#453 id=453 data-nosnippet>453</a>        <span class="macro">assert_eq!</span>(vm.errors.len(), <span class="number">1</span>);
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="macro">assert!</span>(vm.errors[<span class="number">0</span>].contains(<span class="string">"Stack overflow: maximum recursion depth"</span>));
-<a href=#455 id=455 data-nosnippet>455</a>    }
-<a href=#456 id=456 data-nosnippet>456</a>
-<a href=#457 id=457 data-nosnippet>457</a>    <span class="attr">#[test]
-<a href=#458 id=458 data-nosnippet>458</a>    </span><span class="kw">fn </span>test_vm_error_carries_source_span() {
-<a href=#459 id=459 data-nosnippet>459</a>        <span class="kw">let </span>source = <span class="string">"let a = 1;\nlet b = 0;\na / b;"</span>;
-<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span><span class="kw-2">mut </span>lexer = Lexer::new(source);
-<a href=#461 id=461 data-nosnippet>461</a>        <span class="kw">let </span><span class="kw-2">mut </span>tokens = Vec::new();
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(token) = lexer.next_token() {
-<a href=#463 id=463 data-nosnippet>463</a>            tokens.push(token);
-<a href=#464 id=464 data-nosnippet>464</a>        }
-<a href=#465 id=465 data-nosnippet>465</a>        <span class="kw">let </span><span class="kw-2">mut </span>parser = Parser::new(tokens);
-<a href=#466 id=466 data-nosnippet>466</a>        <span class="kw">let </span><span class="kw-2">mut </span>ast = Ast::new();
-<a href=#467 id=467 data-nosnippet>467</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(stmt) = parser.next_statement() {
-<a href=#468 id=468 data-nosnippet>468</a>            ast.add_statement(stmt);
-<a href=#469 id=469 data-nosnippet>469</a>        }
-<a href=#470 id=470 data-nosnippet>470</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolver = Resolver::new();
-<a href=#471 id=471 data-nosnippet>471</a>        resolver.resolve(<span class="kw-2">&amp;</span>ast);
-<a href=#472 id=472 data-nosnippet>472</a>        <span class="kw">let </span>program = BytecodeCompiler::new(resolver.function_count()).compile(<span class="kw-2">&amp;</span>ast);
-<a href=#473 id=473 data-nosnippet>473</a>        <span class="kw">let </span><span class="kw-2">mut </span>vm = VM::new(<span class="kw-2">&amp;</span>program, resolver.global_slot_count());
-<a href=#474 id=474 data-nosnippet>474</a>        vm.run();
-<a href=#475 id=475 data-nosnippet>475</a>
-<a href=#476 id=476 data-nosnippet>476</a>        <span class="macro">assert_eq!</span>(vm.errors.len(), <span class="number">1</span>);
-<a href=#477 id=477 data-nosnippet>477</a>        <span class="kw">let </span>rendered = vm.errors[<span class="number">0</span>].format_with_source(source);
-<a href=#478 id=478 data-nosnippet>478</a>        <span class="macro">assert!</span>(rendered.contains(<span class="string">"Division by zero"</span>), <span class="string">"{}"</span>, rendered);
-<a href=#479 id=479 data-nosnippet>479</a>        <span class="comment">// The faulting `/` is on line 3 — the offset table must point there.
-<a href=#480 id=480 data-nosnippet>480</a>        </span><span class="macro">assert!</span>(rendered.contains(<span class="string">"3"</span>), <span class="string">"expected a line-3 location in: {}"</span>, rendered);
-<a href=#481 id=481 data-nosnippet>481</a>    }
-<a href=#482 id=482 data-nosnippet>482</a>}
+<a href=#367 id=367 data-nosnippet>367</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolver = Resolver::new();
+<a href=#368 id=368 data-nosnippet>368</a>        resolver.resolve(<span class="kw-2">&amp;</span>ast);
+<a href=#369 id=369 data-nosnippet>369</a>        <span class="macro">assert!</span>(!resolver.has_errors(), <span class="string">"resolve errors: {:?}"</span>, resolver.diagnostics.iter().map(|d| <span class="kw-2">&amp;</span>d.message).collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;());
+<a href=#370 id=370 data-nosnippet>370</a>
+<a href=#371 id=371 data-nosnippet>371</a>        <span class="kw">let </span><span class="kw-2">mut </span>evaluator = ASTEvaluator::new(resolver.global_slot_count());
+<a href=#372 id=372 data-nosnippet>372</a>        evaluator.execute(<span class="kw-2">&amp;</span>ast);
+<a href=#373 id=373 data-nosnippet>373</a>        <span class="kw">let </span>tree = Outcome {
+<a href=#374 id=374 data-nosnippet>374</a>            last_value: evaluator.last_value.clone(),
+<a href=#375 id=375 data-nosnippet>375</a>            errors: evaluator.errors.iter().map(|d| d.message.clone()).collect(),
+<a href=#376 id=376 data-nosnippet>376</a>        };
+<a href=#377 id=377 data-nosnippet>377</a>
+<a href=#378 id=378 data-nosnippet>378</a>        <span class="kw">let </span>program = BytecodeCompiler::new(resolver.function_count()).compile(<span class="kw-2">&amp;</span>ast);
+<a href=#379 id=379 data-nosnippet>379</a>        <span class="kw">let </span><span class="kw-2">mut </span>vm = VM::new(<span class="kw-2">&amp;</span>program, resolver.global_slot_count());
+<a href=#380 id=380 data-nosnippet>380</a>        vm.run();
+<a href=#381 id=381 data-nosnippet>381</a>        <span class="kw">let </span>vm_outcome = Outcome {
+<a href=#382 id=382 data-nosnippet>382</a>            last_value: vm.last_value.clone(),
+<a href=#383 id=383 data-nosnippet>383</a>            errors: vm.errors.iter().map(|d| d.message.clone()).collect(),
+<a href=#384 id=384 data-nosnippet>384</a>        };
+<a href=#385 id=385 data-nosnippet>385</a>
+<a href=#386 id=386 data-nosnippet>386</a>        (tree, vm_outcome)
+<a href=#387 id=387 data-nosnippet>387</a>    }
+<a href=#388 id=388 data-nosnippet>388</a>
+<a href=#389 id=389 data-nosnippet>389</a>    <span class="kw">fn </span>assert_parity(source: <span class="kw-2">&amp;</span>str) {
+<a href=#390 id=390 data-nosnippet>390</a>        <span class="kw">let </span>(tree, vm) = run_both(source);
+<a href=#391 id=391 data-nosnippet>391</a>        <span class="macro">assert_eq!</span>(tree.last_value, vm.last_value, <span class="string">"last_value diverged on: {}"</span>, source);
+<a href=#392 id=392 data-nosnippet>392</a>        <span class="macro">assert_eq!</span>(tree.errors, vm.errors, <span class="string">"errors diverged on: {}"</span>, source);
+<a href=#393 id=393 data-nosnippet>393</a>    }
+<a href=#394 id=394 data-nosnippet>394</a>
+<a href=#395 id=395 data-nosnippet>395</a>    <span class="attr">#[test]
+<a href=#396 id=396 data-nosnippet>396</a>    </span><span class="kw">fn </span>test_golden_suite_parity() {
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="comment">// Every program the Phase 2 golden compile suite used, now checked
+<a href=#398 id=398 data-nosnippet>398</a>        // for identical results across both execution backends.
+<a href=#399 id=399 data-nosnippet>399</a>        </span><span class="kw">let </span>programs = [
+<a href=#400 id=400 data-nosnippet>400</a>            <span class="string">"1 + 2 * 3;"</span>,
+<a href=#401 id=401 data-nosnippet>401</a>            <span class="string">"2 ** 10;"</span>,
+<a href=#402 id=402 data-nosnippet>402</a>            <span class="string">"10 % 3;"</span>,
+<a href=#403 id=403 data-nosnippet>403</a>            <span class="string">"7 / 2;"</span>,
+<a href=#404 id=404 data-nosnippet>404</a>            <span class="string">"7.5 / 2.5;"</span>,
+<a href=#405 id=405 data-nosnippet>405</a>            <span class="string">"1 + 2.5;"</span>,
+<a href=#406 id=406 data-nosnippet>406</a>            <span class="string">"\"con\" + \"cat\";"</span>,
+<a href=#407 id=407 data-nosnippet>407</a>            <span class="string">"12 &amp; 10; 12 | 10; 12 ^ 10; 8 &lt;&lt; 2; 32 &gt;&gt; 2;"</span>,
+<a href=#408 id=408 data-nosnippet>408</a>            <span class="string">"-5; +5; !true; !0;"</span>,
+<a href=#409 id=409 data-nosnippet>409</a>            <span class="string">"let x = 1; x = x + 1; x;"</span>,
+<a href=#410 id=410 data-nosnippet>410</a>            <span class="string">"let x = 1.5; x = 2; x + 0.5;"</span>,
+<a href=#411 id=411 data-nosnippet>411</a>            <span class="string">"true &amp;&amp; false || !true;"</span>,
+<a href=#412 id=412 data-nosnippet>412</a>            <span class="string">"1 &lt; 2 &amp;&amp; 2 &lt;= 2 &amp;&amp; 3 &gt; 2 &amp;&amp; 3 &gt;= 3 &amp;&amp; 1 == 1 &amp;&amp; 1 != 2;"</span>,
+<a href=#413 id=413 data-nosnippet>413</a>            <span class="string">"10 == 10.0;"</span>,
+<a href=#414 id=414 data-nosnippet>414</a>            <span class="string">"let r = 0; if true { r = 1; } else { r = 2; } r;"</span>,
+<a href=#415 id=415 data-nosnippet>415</a>            <span class="string">"let r = 0; if false { r = 1; } else { r = 2; } r;"</span>,
+<a href=#416 id=416 data-nosnippet>416</a>            <span class="string">"let v = 5; { let v = 99; } v;"</span>,
+<a href=#417 id=417 data-nosnippet>417</a>            <span class="string">"fn add(a, b) { return a + b; } add(2, 3);"</span>,
+<a href=#418 id=418 data-nosnippet>418</a>            <span class="string">"fn add(a: Int, b: Int) { return a + b; } add(2, 3);"</span>,
+<a href=#419 id=419 data-nosnippet>419</a>            <span class="string">"fn fact(n) { if n &lt;= 1 { return 1; } else { return n * fact(n - 1); } } fact(10);"</span>,
+<a href=#420 id=420 data-nosnippet>420</a>            <span class="string">"fn is_even(n) { if n == 0 { return true; } else { return is_odd(n - 1); } } \
+<a href=#421 id=421 data-nosnippet>421</a>             fn is_odd(n) { if n == 0 { return false; } else { return is_even(n - 1); } } \
+<a href=#422 id=422 data-nosnippet>422</a>             is_even(10);"</span>,
+<a href=#423 id=423 data-nosnippet>423</a>            <span class="string">"let counter = 10; ++counter; counter++; --counter; counter--;"</span>,
+<a href=#424 id=424 data-nosnippet>424</a>            <span class="string">"let c = 10; ++c; c;"</span>,
+<a href=#425 id=425 data-nosnippet>425</a>            <span class="string">"let c = 10; c++; c;"</span>,
+<a href=#426 id=426 data-nosnippet>426</a>            <span class="string">"min(4, 2, 9, 1); max(4, 2, 9, 1);"</span>,
+<a href=#427 id=427 data-nosnippet>427</a>            <span class="string">"min(3.5, 2, 4.1);"</span>,
+<a href=#428 id=428 data-nosnippet>428</a>            <span class="string">"fn f() { 7; } f();"</span>,
+<a href=#429 id=429 data-nosnippet>429</a>            <span class="string">"fn sq(n: Int) { return n * n; } sq(2) + sq(3);"</span>,
+<a href=#430 id=430 data-nosnippet>430</a>            <span class="string">"let g = 41; fn get() { return g + 1; } get();"</span>,
+<a href=#431 id=431 data-nosnippet>431</a>            <span class="string">"let sum = 0; let i = 0; while i &lt; 5 { sum = sum + i; i = i + 1; } sum;"</span>,
+<a href=#432 id=432 data-nosnippet>432</a>            <span class="string">"let x = 0; while false { x = 99; } x;"</span>,
+<a href=#433 id=433 data-nosnippet>433</a>            <span class="string">"let total = 0; for i in 0..5 { total = total + i; } total;"</span>,
+<a href=#434 id=434 data-nosnippet>434</a>            <span class="string">"let count = 0; let i = 0; while i &lt; 3 { let j = 0; while j &lt; 3 { count = count + 1; j = j + 1; } i = i + 1; } count;"</span>,
+<a href=#435 id=435 data-nosnippet>435</a>            <span class="string">"fn first_over(limit) { let i = 0; while true { if i &gt; limit { return i; } i = i + 1; } } first_over(3);"</span>,
+<a href=#436 id=436 data-nosnippet>436</a>        ];
+<a href=#437 id=437 data-nosnippet>437</a>        <span class="kw">for </span>source <span class="kw">in </span>programs {
+<a href=#438 id=438 data-nosnippet>438</a>            assert_parity(source);
+<a href=#439 id=439 data-nosnippet>439</a>        }
+<a href=#440 id=440 data-nosnippet>440</a>    }
+<a href=#441 id=441 data-nosnippet>441</a>
+<a href=#442 id=442 data-nosnippet>442</a>    <span class="attr">#[test]
+<a href=#443 id=443 data-nosnippet>443</a>    </span><span class="kw">fn </span>test_runtime_error_parity() {
+<a href=#444 id=444 data-nosnippet>444</a>        <span class="comment">// Single-statement failures: both backends report the same one
+<a href=#445 id=445 data-nosnippet>445</a>        // error. (Multi-statement error recovery intentionally differs: the
+<a href=#446 id=446 data-nosnippet>446</a>        // tree-walker keeps going, the VM halts — see module docs.)
+<a href=#447 id=447 data-nosnippet>447</a>        </span><span class="kw">for </span>source <span class="kw">in </span>[
+<a href=#448 id=448 data-nosnippet>448</a>            <span class="string">"1 / 0;"</span>,
+<a href=#449 id=449 data-nosnippet>449</a>            <span class="string">"1.0 / 0.0;"</span>,
+<a href=#450 id=450 data-nosnippet>450</a>            <span class="string">"10 % 0;"</span>,
+<a href=#451 id=451 data-nosnippet>451</a>            <span class="string">r#"fn f() { let x = 1; } print(f());"#</span>,
+<a href=#452 id=452 data-nosnippet>452</a>            <span class="string">r#"print(print("x"));"#</span>,
+<a href=#453 id=453 data-nosnippet>453</a>        ] {
+<a href=#454 id=454 data-nosnippet>454</a>            assert_parity(source);
+<a href=#455 id=455 data-nosnippet>455</a>        }
+<a href=#456 id=456 data-nosnippet>456</a>    }
+<a href=#457 id=457 data-nosnippet>457</a>
+<a href=#458 id=458 data-nosnippet>458</a>    <span class="attr">#[test]
+<a href=#459 id=459 data-nosnippet>459</a>    </span><span class="kw">fn </span>test_stack_overflow_parity() {
+<a href=#460 id=460 data-nosnippet>460</a>        <span class="kw">let </span>(tree, vm) = run_both(<span class="string">"fn boom(n) { return boom(n + 1); } boom(0);"</span>);
+<a href=#461 id=461 data-nosnippet>461</a>        <span class="macro">assert_eq!</span>(tree.errors, vm.errors);
+<a href=#462 id=462 data-nosnippet>462</a>        <span class="macro">assert_eq!</span>(vm.errors.len(), <span class="number">1</span>);
+<a href=#463 id=463 data-nosnippet>463</a>        <span class="macro">assert!</span>(vm.errors[<span class="number">0</span>].contains(<span class="string">"Stack overflow: maximum recursion depth"</span>));
+<a href=#464 id=464 data-nosnippet>464</a>    }
+<a href=#465 id=465 data-nosnippet>465</a>
+<a href=#466 id=466 data-nosnippet>466</a>    <span class="attr">#[test]
+<a href=#467 id=467 data-nosnippet>467</a>    </span><span class="kw">fn </span>test_vm_error_carries_source_span() {
+<a href=#468 id=468 data-nosnippet>468</a>        <span class="kw">let </span>source = <span class="string">"let a = 1;\nlet b = 0;\na / b;"</span>;
+<a href=#469 id=469 data-nosnippet>469</a>        <span class="kw">let </span><span class="kw-2">mut </span>lexer = Lexer::new(source);
+<a href=#470 id=470 data-nosnippet>470</a>        <span class="kw">let </span><span class="kw-2">mut </span>tokens = Vec::new();
+<a href=#471 id=471 data-nosnippet>471</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(token) = lexer.next_token() {
+<a href=#472 id=472 data-nosnippet>472</a>            tokens.push(token);
+<a href=#473 id=473 data-nosnippet>473</a>        }
+<a href=#474 id=474 data-nosnippet>474</a>        <span class="kw">let </span><span class="kw-2">mut </span>parser = Parser::new(tokens);
+<a href=#475 id=475 data-nosnippet>475</a>        <span class="kw">let </span><span class="kw-2">mut </span>ast = Ast::new();
+<a href=#476 id=476 data-nosnippet>476</a>        <span class="kw">while let </span><span class="prelude-val">Some</span>(stmt) = parser.next_statement() {
+<a href=#477 id=477 data-nosnippet>477</a>            ast.add_statement(stmt);
+<a href=#478 id=478 data-nosnippet>478</a>        }
+<a href=#479 id=479 data-nosnippet>479</a>        <span class="kw">let </span><span class="kw-2">mut </span>resolver = Resolver::new();
+<a href=#480 id=480 data-nosnippet>480</a>        resolver.resolve(<span class="kw-2">&amp;</span>ast);
+<a href=#481 id=481 data-nosnippet>481</a>        <span class="kw">let </span>program = BytecodeCompiler::new(resolver.function_count()).compile(<span class="kw-2">&amp;</span>ast);
+<a href=#482 id=482 data-nosnippet>482</a>        <span class="kw">let </span><span class="kw-2">mut </span>vm = VM::new(<span class="kw-2">&amp;</span>program, resolver.global_slot_count());
+<a href=#483 id=483 data-nosnippet>483</a>        vm.run();
+<a href=#484 id=484 data-nosnippet>484</a>
+<a href=#485 id=485 data-nosnippet>485</a>        <span class="macro">assert_eq!</span>(vm.errors.len(), <span class="number">1</span>);
+<a href=#486 id=486 data-nosnippet>486</a>        <span class="kw">let </span>rendered = vm.errors[<span class="number">0</span>].format_with_source(source);
+<a href=#487 id=487 data-nosnippet>487</a>        <span class="macro">assert!</span>(rendered.contains(<span class="string">"Division by zero"</span>), <span class="string">"{}"</span>, rendered);
+<a href=#488 id=488 data-nosnippet>488</a>        <span class="comment">// The faulting `/` is on line 3 — the offset table must point there.
+<a href=#489 id=489 data-nosnippet>489</a>        </span><span class="macro">assert!</span>(rendered.contains(<span class="string">"3"</span>), <span class="string">"expected a line-3 location in: {}"</span>, rendered);
+<a href=#490 id=490 data-nosnippet>490</a>    }
+<a href=#491 id=491 data-nosnippet>491</a>}
 </code></pre></div></section></main></body></html>

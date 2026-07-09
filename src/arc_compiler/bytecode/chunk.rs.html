@@ -84,5 +84,16 @@
 <a href=#84 id=84 data-nosnippet>84</a>        <span class="self">self</span>.code[operand_at] = bytes[<span class="number">0</span>];
 <a href=#85 id=85 data-nosnippet>85</a>        <span class="self">self</span>.code[operand_at + <span class="number">1</span>] = bytes[<span class="number">1</span>];
 <a href=#86 id=86 data-nosnippet>86</a>    }
-<a href=#87 id=87 data-nosnippet>87</a>}
+<a href=#87 id=87 data-nosnippet>87</a>
+<a href=#88 id=88 data-nosnippet>88</a>    <span class="doccomment">/// Emits an `OP_LOOP` (backward jump) landing at `loop_start`, a code
+<a href=#89 id=89 data-nosnippet>89</a>    /// offset already behind the current end of the chunk — the loop
+<a href=#90 id=90 data-nosnippet>90</a>    /// header's start is always known by the time the back-edge is emitted,
+<a href=#91 id=91 data-nosnippet>91</a>    /// so unlike forward jumps this needs no later patching.
+<a href=#92 id=92 data-nosnippet>92</a>    </span><span class="kw">pub fn </span>emit_loop(<span class="kw-2">&amp;mut </span><span class="self">self</span>, loop_start: usize, source_offset: u32) {
+<a href=#93 id=93 data-nosnippet>93</a>        <span class="self">self</span>.write_op(OpCode::Loop, source_offset);
+<a href=#94 id=94 data-nosnippet>94</a>        <span class="kw">let </span>after_operand = <span class="self">self</span>.code.len() + <span class="number">2</span>;
+<a href=#95 id=95 data-nosnippet>95</a>        <span class="kw">let </span>distance = u16::try_from(after_operand - loop_start).expect(<span class="string">"loop body exceeded u16::MAX bytes"</span>);
+<a href=#96 id=96 data-nosnippet>96</a>        <span class="self">self</span>.write_u16(distance, source_offset);
+<a href=#97 id=97 data-nosnippet>97</a>    }
+<a href=#98 id=98 data-nosnippet>98</a>}
 </code></pre></div></section></main></body></html>
