@@ -11,9 +11,15 @@
 //! naive — correctness is the requirement; the VM doesn't care, and Phase 5
 //! consumes the IR directly, not this bytecode.
 //!
-//! Jumps: block creation order in `lower.rs` guarantees every CFG edge
-//! targets a higher block id, and blocks are emitted in id order, so the
-//! forward-only `Jump`/`JumpIfFalse` opcodes suffice. // CFG is a DAG today
+//! Jumps: blocks are emitted in ascending id order. `while` loops are the
+//! only source of a backward edge (the body's fall-through jump back to its
+//! loop header, which — by construction in `lower.rs` — always has a
+//! *lower* block id than the body, since the header is created first). By
+//! the time such an edge is emitted, its target's start offset is already
+//! known, so it's emitted immediately as a backward `OP_LOOP`, no patching
+//! needed. Every other edge (`Branch`'s arms, a loop's own header→body/exit)
+//! targets a block not yet emitted and goes through the same forward
+//! `Jump`/deferred-patch path as before.
 
 use crate::ast::resolver::{BuiltinFn, SlotIndex};
 use crate::bytecode::chunk::Chunk;
@@ -70,7 +76,7 @@ fn function_to_chunk(f: &IrFunction) -> Chunk {
     for (operand_at, target) in std::mem::take(&mut b.pending_jumps) {
         let target_start = b.block_starts[target.0 as usize]
             .expect("live blocks never jump to dead blocks");
-        debug_assert!(target_start >= operand_at + 2, "CFG edges are forward-only (DAG)");
+        debug_assert!(target_start >= operand_at + 2, "only genuinely-forward edges are deferred (see emit_control_jump)");
         b.chunk.patch_jump_to(operand_at, target_start);
     }
 
@@ -107,13 +113,25 @@ impl ChunkBuilder<'_> {
         self.pending_jumps.push((operand_at, target));
     }
 
+    /// Emits a jump to `target`, forward (`OP_JUMP`, patched once the
+    /// target is emitted) unless `target`'s start is already known — i.e.
+    /// a loop back-edge — in which case it emits a backward `OP_LOOP`
+    /// immediately.
+    fn emit_control_jump(&mut self, target: BlockId, offset: u32) {
+        if let Some(target_start) = self.block_starts[target.0 as usize] {
+            self.chunk.emit_loop(target_start, offset);
+        } else {
+            self.emit_jump_to(OpCode::Jump, target, offset);
+        }
+    }
+
     fn emit_block(&mut self, block: &Block) {
         for instr in &block.instrs {
             self.emit_instr(&instr.kind, instr.offset);
         }
         let offset = block.term_offset;
         match &block.terminator {
-            Terminator::Jump(target) => self.emit_jump_to(OpCode::Jump, *target, offset),
+            Terminator::Jump(target) => self.emit_control_jump(*target, offset),
             Terminator::Branch { cond, then_block, else_block } => {
                 // JumpIfFalse peeks, so both paths pop the condition copy.
                 self.push_reg(*cond, offset);

@@ -7,17 +7,18 @@
 //! results are simply unused registers (which is what gives DCE something
 //! to delete).
 //!
-//! Block creation order guarantees every CFG edge targets a *higher* block
-//! id — Arc has no loops, so CFGs are DAGs and the bytecode lowering can rely
-//! on forward-only jumps. (`// CFG is a DAG today` — re-audit when `while`
-//! lands.)
+//! Every CFG edge targets a *higher* block id — except one: `while`'s body
+//! jumps back to its own loop header (§`lower_while`), the CFG's only
+//! back-edge. Because the header block is always created (and so always
+//! emitted, in id order) before the body, `to_bytecode.rs` can still tell
+//! forward from backward edges purely by "is the target already emitted".
 
 use crate::ast::resolver::ResolvedBinding;
 use crate::ast::types::{DataType, Value};
 use crate::ast::{
     Ast, ASTBinaryExpression, ASTBinaryOperatorKind, ASTExpression, ASTExpressionKind,
     ASTFunctionCallExpression, ASTFunctionDeclaration, ASTIfStatement, ASTStatement,
-    ASTStatementKind, ASTUnaryOperatorKind,
+    ASTStatementKind, ASTUnaryOperatorKind, ASTWhileStatement,
 };
 
 use super::instr::{Block, BlockId, InstrKind, Instruction, IrFunction, IrProgram, Reg, Terminator};
@@ -239,6 +240,7 @@ impl IrLowering {
             }
             ASTStatementKind::Block(statements) => self.lower_statements(statements),
             ASTStatementKind::IfStatement(if_stmt) => self.lower_if(if_stmt),
+            ASTStatementKind::WhileStatement(while_stmt) => self.lower_while(while_stmt),
             ASTStatementKind::FunctionDeclaration(func) => self.lower_function(func),
             ASTStatementKind::ReturnStatement(ret) => {
                 let value = self.lower_expression(&ret.value);
@@ -275,6 +277,30 @@ impl IrLowering {
             self.seal(Terminator::Jump(join));
         }
         self.switch_to(join);
+    }
+
+    /// Lowers `while <cond> { body }` into a header/body/exit triple: the
+    /// header re-evaluates the condition and branches into the body or out
+    /// to the exit block; the body's fall-through end jumps back to the
+    /// header — the CFG's one back-edge (`header`'s block id is always
+    /// lower than `body`'s, since header is created first).
+    fn lower_while(&mut self, while_stmt: &ASTWhileStatement) {
+        let header = self.new_block();
+        self.seal(Terminator::Jump(header));
+        self.switch_to(header);
+
+        let cond = self.lower_expression(&while_stmt.condition);
+        let body = self.new_block();
+        let exit = self.new_block();
+        self.seal(Terminator::Branch { cond, then_block: body, else_block: exit });
+
+        self.switch_to(body);
+        self.lower_statements(&while_stmt.body);
+        if !self.is_sealed() {
+            self.seal(Terminator::Jump(header)); // back-edge
+        }
+
+        self.switch_to(exit);
     }
 
     fn lower_function(&mut self, func: &ASTFunctionDeclaration) {

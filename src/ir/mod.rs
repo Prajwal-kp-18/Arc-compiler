@@ -114,10 +114,44 @@ mod tests {
             "1 / 0;",
             "10 % 0;",
             r#"print(print("x"));"#,
+            "let sum = 0; let i = 0; while i < 5 { sum = sum + i; i = i + 1; } sum;",
+            "let x = 0; while false { x = 99; } x;",
+            "let total = 0; for i in 0..5 { total = total + i; } total;",
+            "fn first_over(limit) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } first_over(3);",
         ];
         for source in programs {
             assert_optimized_parity(source);
         }
+    }
+
+    // -- loops (Phase 4.5 back-edge support) --------------------------------------
+
+    #[test]
+    fn test_constant_false_while_condition_eliminates_the_loop_body() {
+        let mut program = lower_source(r#"while false { print("never"); } print("done");"#);
+        passes::optimize(&mut program);
+        // The body's print must be gone; only "done" survives.
+        let text = dump::dump_program(&program);
+        assert!(!text.contains("never"), "\n{}", text);
+        assert!(text.contains("done"), "\n{}", text);
+    }
+
+    #[test]
+    fn test_loop_back_edge_survives_optimization() {
+        // A loop that isn't constant-foldable must still contain a jump
+        // back to its own header after optimization runs.
+        let mut program = lower_source("let i = 0; while i < 10 { i = i + 1; }");
+        passes::optimize(&mut program);
+        let text = dump::dump_program(&program);
+        // At least one block must jump to a block with a lower id than itself.
+        let has_back_edge = program
+            .script
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| !b.dead)
+            .any(|(id, b)| matches!(&b.terminator, super::instr::Terminator::Jump(target) if (target.0 as usize) <= id));
+        assert!(has_back_edge, "\n{}", text);
     }
 
     // -- constant folding ------------------------------------------------------

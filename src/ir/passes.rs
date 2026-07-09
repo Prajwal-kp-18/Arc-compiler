@@ -26,8 +26,8 @@ pub fn optimize(program: &mut IrProgram) {
 }
 
 fn optimize_function(f: &mut IrFunction) {
-    // CFGs are DAGs today (no loops), so this converges fast; the cap is a
-    // safety net, not a tuning knob.
+    // Converges in one or two rounds in practice; the cap is a safety net
+    // against a pass-interaction cycle, not a tuning knob.
     for _ in 0..10 {
         let mut changed = fold(f);
         changed |= dce(f);
@@ -60,8 +60,9 @@ pub fn fold(f: &mut IrFunction) -> bool {
     let mut consts: HashMap<Reg, Value> = HashMap::new();
     let mut changed = false;
 
-    // Pre-seed with existing Const instructions so folding works across
-    // blocks (operands always come from earlier blocks — CFG is a DAG today).
+    // Pre-seed with every existing Const instruction, regardless of block —
+    // a plain collection pass, order-independent, so it finds constants
+    // inside a loop body exactly as readily as ones before the loop.
     for block in f.blocks.iter().filter(|b| !b.dead) {
         for instr in &block.instrs {
             if let InstrKind::Const { dst, value } = &instr.kind {
@@ -232,8 +233,12 @@ enum Key {
 pub fn cse(f: &mut IrFunction) -> bool {
     let counts = write_counts(f);
     // dup register -> the earlier register holding the same value. Filled
-    // per block, applied to operands on the fly (uses always follow defs in
-    // walk order — CFG is a DAG today and blocks are emitted in id order).
+    // per block (`available` below is local to each block: CSE itself is
+    // block-local), applied to operands on the fly as blocks are walked in
+    // id order. Safe even with `while`'s back-edge: every register still has
+    // exactly one static def site (the loop header's condition is one
+    // instruction, re-executed at runtime, not redefined per iteration), so
+    // substitutions never point at a not-yet-processed block.
     let mut subst: HashMap<Reg, Reg> = HashMap::new();
     let mut changed = false;
 
