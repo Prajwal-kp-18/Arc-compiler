@@ -3,12 +3,16 @@
 //! Text pretty-printer for [`IrProgram`] — the disassembler's sibling,
 //! wired up behind `--dump-ir` (post-lowering) and `--dump-ir=opt`
 //! (post-passes). The before/after diff of these two is the Phase 4 exit
-//! criterion's demo artifact.
+//! criterion's demo artifact. [`dump_liveness`] is the same idea for Phase
+//! 4.6's slot liveness analysis, behind `--dump-liveness`.
+
+use std::collections::HashSet;
 
 use crate::ast::resolver::BuiltinFn;
 use crate::ast::ASTBinaryOperatorKind;
 
 use super::instr::{InstrKind, IrFunction, IrProgram, Terminator};
+use super::liveness;
 
 pub fn dump_program(program: &IrProgram) -> String {
     let mut out = dump_function(&program.script, "script");
@@ -39,6 +43,52 @@ pub fn dump_function(f: &IrFunction, name: &str) -> String {
         out.push_str(&format!("    {}\n", term));
     }
     out
+}
+
+/// Prints each function's CFG annotated with slot liveness: every block's
+/// live-in/live-out sets and every instruction's live-after set. `--dump-ir`
+/// output is untouched by this — a separate printer behind `--dump-liveness`.
+pub fn dump_liveness(program: &IrProgram) -> String {
+    let mut out = dump_function_liveness(&program.script, "script");
+    for (id, function) in program.functions.iter().enumerate() {
+        out.push('\n');
+        out.push_str(&dump_function_liveness(function, &format!("fn#{} {}", id, function.name)));
+    }
+    out
+}
+
+fn dump_function_liveness(f: &IrFunction, name: &str) -> String {
+    let live = liveness::analyze(f);
+    let mut out = format!("== {} (frame_size={}, {} instrs) ==\n", name, f.frame_size, f.instr_count());
+    if f.frame_size == 0 {
+        out.push_str("-- no locals in this frame; liveness only tracks LoadLocal/StoreLocal, not globals --\n");
+    }
+    for (id, block) in f.blocks.iter().enumerate() {
+        if block.dead {
+            continue;
+        }
+        out.push_str(&format!("b{}: live-in={}\n", id, fmt_slots(&live.live_in[id])));
+        let live_after = liveness::live_after_each(block, &live.live_out[id]);
+        for (instr, after) in block.instrs.iter().zip(live_after.iter()) {
+            out.push_str(&format!("    {}    ; live-after={}\n", render(&instr.kind), fmt_slots(after)));
+        }
+        let term = match &block.terminator {
+            Terminator::Jump(b) => format!("jump b{}", b.0),
+            Terminator::Branch { cond, then_block, else_block } => {
+                format!("branch r{} ? b{} : b{}", cond.0, then_block.0, else_block.0)
+            }
+            Terminator::Return(r) => format!("return r{}", r.0),
+        };
+        out.push_str(&format!("    {}\n", term));
+        out.push_str(&format!("b{}: live-out={}\n", id, fmt_slots(&live.live_out[id])));
+    }
+    out
+}
+
+fn fmt_slots(slots: &HashSet<u32>) -> String {
+    let mut sorted: Vec<u32> = slots.iter().copied().collect();
+    sorted.sort_unstable();
+    format!("{{{}}}", sorted.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(","))
 }
 
 fn render(kind: &InstrKind) -> String {

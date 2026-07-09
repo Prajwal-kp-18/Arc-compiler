@@ -465,6 +465,38 @@ mod tests {
         assert_eq!(unopt_errors, opt_errors);
         assert!(!opt_errors.is_empty(), "expected the modulo-by-zero error to survive DSE");
     }
+
+    // -- liveness dump --------------------------------------------------------
+
+    #[test]
+    fn test_dump_liveness_shows_dead_and_live_slots() {
+        // Dump runs pre-DSE (on `lower_source`'s un-optimized output), so
+        // both the dead store to `a` and the live store to `b` are present
+        // for the printer to annotate.
+        let program = lower_source("fn f(n: Int) { let a = 1; let b = 2; return b; } f(1);");
+        let text = dump::dump_liveness(&program);
+        assert!(text.contains("live-in"), "\n{}", text);
+        assert!(text.contains("live-out"), "\n{}", text);
+        assert!(text.contains("live-after"), "\n{}", text);
+        // `a`'s store line must show an empty live-after set; `b`'s must
+        // show its own slot live-after.
+        let lines: Vec<&str> = text.lines().collect();
+        let a_line = lines.iter().find(|l| l.contains("store_local 1")).unwrap();
+        assert!(a_line.contains("live-after={}"), "\n{}", text);
+        let b_line = lines.iter().find(|l| l.contains("store_local 2")).unwrap();
+        assert!(b_line.contains("live-after={2}"), "\n{}", text);
+    }
+
+    #[test]
+    fn test_dump_liveness_notes_frame_with_no_locals() {
+        // Top-level `let` is a global, not a local — the script frame has
+        // zero locals, and every liveness set is trivially empty. Without a
+        // note, that reads as "the analysis is broken" rather than "there's
+        // nothing to track here".
+        let program = lower_source("let a = 1; a;");
+        let text = dump::dump_liveness(&program);
+        assert!(text.to_lowercase().contains("no locals"), "\n{}", text);
+    }
     // -- the exit-criterion metric ----------------------------------------------
 
     #[test]

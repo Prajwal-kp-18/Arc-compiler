@@ -24,12 +24,14 @@ enum Backend {
 
 /// Entry point - runs REPL, executes a file (`--backend=tree-walk|vm`,
 /// optionally `--opt` for the optimizing IR pipeline), dumps its bytecode
-/// (`--dump-bytecode`), or dumps its IR (`--dump-ir`, `--dump-ir=opt`)
+/// (`--dump-bytecode`), dumps its IR (`--dump-ir`, `--dump-ir=opt`), or
+/// dumps its slot liveness (`--dump-liveness`)
 fn main() {
     let mut backend: Option<Backend> = None;
     let mut opt = false;
     let mut dump_bytecode = false;
     let mut dump_ir: Option<bool> = None;
+    let mut dump_liveness = false;
     let mut filename = None;
 
     for arg in env::args().skip(1) {
@@ -41,6 +43,8 @@ fn main() {
             dump_ir = Some(false);
         } else if arg == "--dump-ir=opt" {
             dump_ir = Some(true);
+        } else if arg == "--dump-liveness" {
+            dump_liveness = true;
         } else if let Some(name) = arg.strip_prefix("--backend=") {
             backend = match name {
                 "tree-walk" => Some(Backend::TreeWalk),
@@ -63,6 +67,7 @@ fn main() {
     match filename {
         Some(filename) if dump_bytecode => dump_bytecode_for_file(&filename),
         Some(filename) if dump_ir.is_some() => dump_ir_for_file(&filename, dump_ir.unwrap()),
+        Some(filename) if dump_liveness => dump_liveness_for_file(&filename),
         Some(filename) if opt => execute_file_optimized(&filename),
         Some(filename) => execute_file(&filename, backend.unwrap_or(Backend::TreeWalk)),
         None => run_repl(),
@@ -224,6 +229,27 @@ fn dump_ir_for_file(filename: &str, optimized: bool) {
         ir::passes::optimize(&mut program);
     }
     print!("{}", ir::dump::dump_program(&program));
+}
+
+/// Compiles a file to IR (pre-optimization) and prints its slot liveness:
+/// every block's live-in/live-out sets and every instruction's live-after
+/// set — the "show your work" artifact for dead-store elimination, same
+/// role `--dump-ir=opt` plays for fold/DCE/CSE.
+fn dump_liveness_for_file(filename: &str) {
+    let contents = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading file '{}': {}", filename, e);
+            return;
+        }
+    };
+
+    let Some((ast, resolver)) = parse_and_resolve(filename, &contents) else {
+        return;
+    };
+
+    let program = ir::lower::IrLowering::new(resolver.function_count()).lower(&ast);
+    print!("{}", ir::dump::dump_liveness(&program));
 }
 
 /// Compiles a file to bytecode and prints its disassembly, without
