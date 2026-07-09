@@ -30,7 +30,7 @@
 //! `&&` and `||` skip the right operand when the result is determined by the
 //! left operand alone, matching standard boolean semantics.
 
-use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement, ASTFunctionDeclaration, ASTReturnStatement, ASTStatement, ASTStatementKind, ASTExpressionKind, Ast};
+use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinaryOperatorKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTAssignment, ASTIdentifierExpression, ASTFunctionCallExpression, ASTPostfixUnaryExpression, ASTIfStatement, ASTWhileStatement, ASTFunctionDeclaration, ASTReturnStatement, ASTStatement, ASTStatementKind, ASTExpressionKind, Ast};
 use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::ast::types::{apply_binary, Value};
 use crate::ast::lexer::TextSpan;
@@ -508,6 +508,28 @@ impl ASTVisitor for ASTEvaluator {
         self.last_value = None;
     }
 
+    fn visit_while_statement(&mut self, while_stmt: &ASTWhileStatement) {
+        loop {
+            self.visit_expression(&while_stmt.condition);
+            let condition = match &self.last_value {
+                Some(value) => value.to_boolean(),
+                None => {
+                    self.add_error("Failed to evaluate while condition".to_string());
+                    return;
+                }
+            };
+            if !condition {
+                break;
+            }
+
+            self.execute_statements(&while_stmt.body);
+            if self.return_value.is_some() || self.fatal {
+                break;
+            }
+        }
+        self.last_value = None;
+    }
+
     /// Dispatches to built-in function implementations.
     ///
     /// Currently `print`, `max`, and `min` are supported.
@@ -830,6 +852,47 @@ mod tests {
             assert_eq!(result.errors.len(), 1, "source: {}, errors: {:?}", source, result.errors);
             assert!(result.errors[0].contains("Failed to evaluate argument"), "{:?}", result.errors);
         }
+    }
+
+    // -- while / for loops --
+
+    #[test]
+    fn test_while_loop_sums_to_ten() {
+        let result = run("let sum = 0; let i = 0; while i < 5 { sum = sum + i; i = i + 1; } sum;");
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(10)));
+    }
+
+    #[test]
+    fn test_while_loop_never_runs_when_condition_starts_false() {
+        let result = run("let x = 0; while false { x = 99; } x;");
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(0)));
+    }
+
+    #[test]
+    fn test_for_loop_desugaring_sums_a_range() {
+        let result = run("let total = 0; for i in 0..5 { total = total + i; } total;");
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(10))); // 0+1+2+3+4
+    }
+
+    #[test]
+    fn test_return_inside_while_loop_exits_the_function() {
+        let result = run(
+            "fn first_over(limit) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } first_over(3);",
+        );
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(4)));
+    }
+
+    #[test]
+    fn test_nested_while_loops() {
+        let result = run(
+            "let count = 0; let i = 0; while i < 3 { let j = 0; while j < 3 { count = count + 1; j = j + 1; } i = i + 1; } count;",
+        );
+        assert!(result.errors.is_empty(), "{:?}", result.errors);
+        assert_eq!(result.last_value, Some(Value::Integer(9)));
     }
 
     #[test]

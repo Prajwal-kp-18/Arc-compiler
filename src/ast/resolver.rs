@@ -35,7 +35,7 @@ use crate::ast::{
     Ast, ASTAssignment, ASTBinaryExpression, ASTBinaryOperatorKind, ASTExpression,
     ASTExpressionKind, ASTFunctionCallExpression, ASTFunctionDeclaration, ASTIdentifierExpression,
     ASTIfStatement, ASTPostfixUnaryExpression, ASTReturnStatement, ASTStatement, ASTStatementKind,
-    ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTVisitor,
+    ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableDeclaration, ASTVisitor, ASTWhileStatement,
 };
 
 /// A slot index within a frame (locals) or the global slot space.
@@ -725,6 +725,9 @@ impl Resolver {
                     || Self::calls_function_by_name(&i.then_branch, name)
                     || i.else_branch.as_ref().is_some_and(|b| Self::calls_function_by_name(b, name))
             }
+            ASTStatementKind::WhileStatement(w) => {
+                Self::expr_calls(&w.condition, name) || Self::calls_function_by_name(&w.body, name)
+            }
             // A nested fn's body is a separate scope; it doesn't count as
             // the enclosing function calling itself.
             ASTStatementKind::FunctionDeclaration(_) => false,
@@ -838,6 +841,11 @@ impl ASTVisitor for Resolver {
 
     fn visit_block(&mut self, statements: &Vec<ASTStatement>) {
         self.resolve_statements(statements);
+    }
+
+    fn visit_while_statement(&mut self, while_stmt: &ASTWhileStatement) {
+        self.visit_expression_typed(&while_stmt.condition);
+        self.resolve_statements(&while_stmt.body);
     }
 }
 
