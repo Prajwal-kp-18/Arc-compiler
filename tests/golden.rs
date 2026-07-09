@@ -63,6 +63,10 @@ const PROGRAMS: &[(&str, &str)] = &[
         "return_inside_loop",
         "fn first_over(limit: Int) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } print(\"first:\", first_over(3));",
     ),
+    (
+        "dead_store",
+        "fn f(n: Int) { let unused = n * 2; let result = n + 1; return result; } print(\"dead_store:\", f(5));",
+    ),
 ];
 
 /// The three execution modes that must agree, as CLI argument sets.

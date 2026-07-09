@@ -119,6 +119,7 @@ mod tests {
             "let x = 0; while false { x = 99; } x;",
             "let total = 0; for i in 0..5 { total = total + i; } total;",
             "fn first_over(limit) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } first_over(3);",
+            "fn f(n) { let unused = n * 2; let result = n + 1; return result; } f(5);",
         ];
         for source in programs {
             assert_optimized_parity(source);
@@ -497,6 +498,7 @@ mod tests {
         let text = dump::dump_liveness(&program);
         assert!(text.to_lowercase().contains("no locals"), "\n{}", text);
     }
+
     // -- the exit-criterion metric ----------------------------------------------
 
     #[test]
@@ -508,6 +510,22 @@ mod tests {
         assert!(
             after.instr_count() < before.instr_count(),
             "expected a reduction, got {} -> {}\nbefore:\n{}\nafter:\n{}",
+            before.instr_count(),
+            after.instr_count(),
+            dump::dump_program(&before),
+            dump::dump_program(&after)
+        );
+    }
+
+    #[test]
+    fn test_dse_reduces_instruction_count_on_dead_store_heavy_code() {
+        let source = "fn f(n: Int) { let a = n; let b = n * 2; let c = n * 3; return n; } f(1);";
+        let before = lower_source(source);
+        let mut after = lower_source(source);
+        passes::optimize(&mut after);
+        assert!(
+            after.instr_count() < before.instr_count(),
+            "expected a reduction from dead-store elimination, got {} -> {}\nbefore:\n{}\nafter:\n{}",
             before.instr_count(),
             after.instr_count(),
             dump::dump_program(&before),
