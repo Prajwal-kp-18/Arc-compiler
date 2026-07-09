@@ -185,7 +185,7 @@ verified execution engine (`--backend=vm`).
   benchmark (`examples/bench.arc`)
 
 ### 7. Optimizing IR (optional pipeline stage)
-**Location**: `src/ir/` (`instr.rs`, `lower.rs`, `passes.rs`, `dump.rs`, `to_bytecode.rs`)
+**Location**: `src/ir/` (`instr.rs`, `lower.rs`, `liveness.rs`, `passes.rs`, `dump.rs`, `to_bytecode.rs`)
 
 With `--opt`, the resolved AST lowers to a three-address-code IR (virtual
 registers, basic blocks, explicit control-flow graph), runs a pass pipeline,
@@ -201,19 +201,30 @@ eliminated or deduplicated):
   and blocks unreachable from entry
 - **Common subexpression elimination** (block-local) reuses the result of
   a repeated computation instead of recomputing it
+- **Dead-store elimination**  deletes a `StoreLocal` whose slot is never
+  read again on any path to function exit, per a backward liveness analysis
+  over local frame slots (`liveness.rs`). Only the store is deleted; if that
+  orphans the value it computed, the *next* DCE round reclaims it (and only
+  if pure  an erroring op like `10 % n` survives, so the runtime error it
+  could raise is preserved). Globals (`StoreGlobal`, i.e. top-level `let`)
+  are always conservatively live and never touched  they may be read by
+  other functions or across REPL lines.
 
 `while` loops lower to a header/body/exit block triple with one back-edge
 (the body jumping back to its own header) the IR's only cyclic control
-flow. All three passes stay correct across it: every register still has
-exactly one static definition site, so a loop body re-executing at runtime
-never confuses the single-pass dataflow the optimizer relies on. A
+flow. All passes stay correct across it: every register still has exactly
+one static definition site, so a loop body re-executing at runtime never
+confuses the single-pass dataflow the optimizer relies on; liveness's
+backward fixpoint iterates until convergence, so a loop-carried store (read
+by the next iteration via the back-edge) is correctly kept live. A
 constant-`false` loop condition folds away the entire loop body via the
 same dead-block elimination that prunes an `if`'s untaken branch.
 
-Inspect the IR before and after optimization:
+Inspect the IR before and after optimization, or the liveness sets DSE acts on:
 ```bash
-cargo run -- --dump-ir program.arc       # after lowering
-cargo run -- --dump-ir=opt program.arc   # after the pass pipeline
+cargo run -- --dump-ir program.arc         # after lowering
+cargo run -- --dump-ir=opt program.arc     # after the pass pipeline
+cargo run -- --dump-liveness program.arc   # per-block/per-instruction slot liveness
 ```
 
 On a constant-heavy program the pipeline reduces the IR by ~70%; the output
