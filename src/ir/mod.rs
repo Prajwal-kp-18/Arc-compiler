@@ -10,6 +10,7 @@
 
 pub mod instr;
 pub mod lower;
+pub mod liveness;
 pub mod passes;
 pub mod dump;
 pub mod to_bytecode;
@@ -25,7 +26,7 @@ mod tests {
     use crate::bytecode::vm::VM;
 
     use super::instr::{InstrKind, IrProgram};
-    use super::{dump, lower, passes, to_bytecode};
+    use super::{dump, liveness, lower, passes, to_bytecode};
 
     fn lower_source(source: &str) -> IrProgram {
         let mut lexer = Lexer::new(source);
@@ -245,6 +246,86 @@ mod tests {
         assert_optimized_parity("fn f(a: Int) { let x = a + 1; a = 5; let y = a + 1; return x + y; } f(1);");
     }
 
+    // -- liveness analysis --------------------------------------------------
+
+    #[test]
+    fn test_liveness_dead_store_has_empty_live_after_and_live_store_is_live_after() {
+        // `a`'s store is dead (never read again); `b`'s store is live (read by return).
+        let program = lower_source("fn f(n: Int) { let a = 1; let b = 2; return b; } f(1);");
+        let f = &program.functions[0];
+        let live = liveness::analyze(f);
+        let block = &f.blocks[0];
+        let live_after = liveness::live_after_each(block, &live.live_out[0]);
+
+        let store_slots: Vec<u32> = block
+            .instrs
+            .iter()
+            .filter_map(|i| match &i.kind {
+                InstrKind::StoreLocal { slot, .. } => Some(slot.0),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(store_slots.len(), 2, "expected two stores (a, b)\n{}", dump::dump_program(&program));
+        let (a_slot, b_slot) = (store_slots[0], store_slots[1]);
+
+        let idx_of = |slot: u32| {
+            block.instrs.iter().position(|i| matches!(&i.kind, InstrKind::StoreLocal { slot: s, .. } if s.0 == slot)).unwrap()
+        };
+        assert!(!live_after[idx_of(a_slot)].contains(&a_slot), "\n{}", dump::dump_program(&program));
+        assert!(live_after[idx_of(b_slot)].contains(&b_slot), "\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_liveness_live_out_is_union_of_branch_arms() {
+        // `x` is only read in the else arm; it must still be live-out of
+        // the header block (union of both successors' live-in).
+        let program =
+            lower_source("fn f(cond: Bool, n: Int) { let x = n; if cond { return 1; } else { return x; } } f(true, 5);");
+        let f = &program.functions[0];
+        let live = liveness::analyze(f);
+        let x_slot = f.blocks[0]
+            .instrs
+            .iter()
+            .find_map(|i| match &i.kind {
+                InstrKind::StoreLocal { slot, .. } => Some(slot.0),
+                _ => None,
+            })
+            .unwrap();
+        assert!(live.live_out[0].contains(&x_slot), "\n{}", dump::dump_program(&program));
+    }
+
+    #[test]
+    fn test_liveness_loop_carried_store_stays_live_via_back_edge() {
+        let program = lower_source("fn f(n: Int) { let i = 0; while i < n { i = i + 1; } return i; } f(3);");
+        let f = &program.functions[0];
+        let live = liveness::analyze(f);
+        let i_slot = f.blocks[0]
+            .instrs
+            .iter()
+            .find_map(|i| match &i.kind {
+                InstrKind::StoreLocal { slot, .. } => Some(slot.0),
+                _ => None,
+            })
+            .unwrap();
+        // The loop body's `i = i + 1` store (not b0's initializer) must
+        // still be live-after: the back-edge feeds the header's condition
+        // read back into this block during the fixpoint.
+        let (bid, idx) = f
+            .blocks
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(bid, b)| {
+                let idx = b
+                    .instrs
+                    .iter()
+                    .position(|ins| matches!(&ins.kind, InstrKind::StoreLocal { slot, .. } if slot.0 == i_slot))?;
+                Some((bid, idx))
+            })
+            .unwrap_or_else(|| panic!("expected a loop-body store to slot {}\n{}", i_slot, dump::dump_program(&program)));
+        let live_after = liveness::live_after_each(&f.blocks[bid], &live.live_out[bid]);
+        assert!(live_after[idx].contains(&i_slot), "\n{}", dump::dump_program(&program));
+    }
     // -- the exit-criterion metric ----------------------------------------------
 
     #[test]
