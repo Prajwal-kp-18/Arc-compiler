@@ -47,6 +47,22 @@ const PROGRAMS: &[(&str, &str)] = &[
         "implicit_return",
         "fn f() { 7; } print(f());",
     ),
+    (
+        "while_loop",
+        "let sum = 0; let i = 0; while i < 5 { sum = sum + i; i = i + 1; } print(\"sum:\", sum);",
+    ),
+    (
+        "for_loop",
+        "let total = 0; for i in 0..5 { total = total + i; } print(\"total:\", total);",
+    ),
+    (
+        "nested_loops",
+        "let count = 0; let i = 0; while i < 3 { let j = 0; while j < 3 { count = count + 1; j = j + 1; } i = i + 1; } print(\"count:\", count);",
+    ),
+    (
+        "return_inside_loop",
+        "fn first_over(limit: Int) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } print(\"first:\", first_over(3));",
+    ),
 ];
 
 /// The three execution modes that must agree, as CLI argument sets.
