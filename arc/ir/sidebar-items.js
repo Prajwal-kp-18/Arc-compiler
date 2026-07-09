@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["dump","instr","lower","passes","to_bytecode"]};
+window.SIDEBAR_ITEMS = {"mod":["dump","instr","liveness","lower","passes","to_bytecode"]};

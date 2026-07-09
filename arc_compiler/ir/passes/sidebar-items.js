@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["cse","dce","fold","optimize"]};
+window.SIDEBAR_ITEMS = {"fn":["cse","dce","dse","fold","optimize"]};

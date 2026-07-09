@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["dump_function","dump_program"]};
+window.SIDEBAR_ITEMS = {"fn":["dump_function","dump_liveness","dump_program"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["dump_function","dump_program","mnemonic","regs","render"]};
+window.SIDEBAR_ITEMS = {"fn":["dump_function","dump_function_liveness","dump_liveness","dump_program","fmt_slots","mnemonic","regs","render"]};

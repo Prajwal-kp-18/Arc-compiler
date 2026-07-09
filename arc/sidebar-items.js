@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["Backend"],"fn":["dump_bytecode_for_file","dump_ir_for_file","execute_file","execute_file_optimized","main","parse_and_resolve","print_diagnostics","run_repl"],"mod":["ast","bytecode","ir"]};
+window.SIDEBAR_ITEMS = {"enum":["Backend"],"fn":["dump_bytecode_for_file","dump_ir_for_file","dump_liveness_for_file","execute_file","execute_file_optimized","main","parse_and_resolve","print_diagnostics","run_repl"],"mod":["ast","bytecode","ir"]};
