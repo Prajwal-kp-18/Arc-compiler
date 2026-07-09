@@ -63,6 +63,10 @@ pub enum OpCode {
     Jump = 28,
     /// Peeks (does not pop) the top of the stack; jumps forward if falsy.
     JumpIfFalse = 29,
+    /// Unconditional relative *backward* jump (loop back-edge): `u16`
+    /// distance subtracted from ip. Used only for `while`/`for` loops —
+    /// every other jump is forward-only.
+    Loop = 35,
     /// Calls a user-defined function: `u16` FunctionId, `u8` argument count.
     /// Arguments are already on the stack, pushed left-to-right.
     Call = 30,
@@ -111,6 +115,7 @@ impl OpCode {
             27 => Not,
             28 => Jump,
             29 => JumpIfFalse,
+            35 => Loop,
             30 => Call,
             31 => Return,
             32 => Print,
@@ -154,6 +159,7 @@ impl OpCode {
             Not => "OP_NOT",
             Jump => "OP_JUMP",
             JumpIfFalse => "OP_JUMP_IF_FALSE",
+            Loop => "OP_LOOP",
             Call => "OP_CALL",
             Return => "OP_RETURN",
             Print => "OP_PRINT",

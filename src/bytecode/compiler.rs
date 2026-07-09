@@ -14,7 +14,7 @@ use crate::ast::types::Value;
 use crate::ast::{
     Ast, ASTBinaryExpression, ASTBinaryOperatorKind, ASTExpression, ASTExpressionKind,
     ASTFunctionCallExpression, ASTFunctionDeclaration, ASTIfStatement, ASTPostfixUnaryExpression,
-    ASTStatement, ASTStatementKind, ASTUnaryExpression, ASTUnaryOperatorKind,
+    ASTStatement, ASTStatementKind, ASTUnaryExpression, ASTUnaryOperatorKind, ASTWhileStatement,
 };
 use crate::bytecode::chunk::Chunk;
 use crate::bytecode::opcode::OpCode;
@@ -180,6 +180,7 @@ impl BytecodeCompiler {
             }
             ASTStatementKind::Block(statements) => self.compile_statements(statements),
             ASTStatementKind::IfStatement(if_stmt) => self.compile_if(if_stmt),
+            ASTStatementKind::WhileStatement(while_stmt) => self.compile_while(while_stmt),
             ASTStatementKind::FunctionDeclaration(func) => self.compile_function(func),
             ASTStatementKind::ReturnStatement(ret) => {
                 self.compile_expression(&ret.value);
@@ -204,6 +205,24 @@ impl BytecodeCompiler {
         }
 
         self.current().patch_jump(else_jump);
+    }
+
+    /// The standard (clox) while-loop pattern: re-evaluate the condition at
+    /// `loop_start` on every iteration, `JUMP_IF_FALSE` out when it's
+    /// falsy, and `OP_LOOP` (backward jump) back to `loop_start` after the
+    /// body — the only place this compiler emits a backward jump.
+    fn compile_while(&mut self, while_stmt: &ASTWhileStatement) {
+        let loop_start = self.current().code.len();
+        self.compile_expression(&while_stmt.condition);
+        let offset = self.current_offset;
+
+        let exit_jump = self.current().emit_jump(OpCode::JumpIfFalse, offset);
+        self.emit(OpCode::Pop, offset); // condition was truthy
+        self.compile_statements(&while_stmt.body);
+        self.current().emit_loop(loop_start, offset);
+
+        self.current().patch_jump(exit_jump);
+        self.emit(OpCode::Pop, offset); // condition was falsy
     }
 
     fn compile_function(&mut self, func: &ASTFunctionDeclaration) {
@@ -493,6 +512,20 @@ mod tests {
     }
 
     #[test]
+    fn test_while_loop_compiles_with_backward_jump() {
+        let program = compile("let i = 0; while i < 5 { i = i + 1; }");
+        let text = disassemble_chunk(&program.script, "script");
+        assert!(text.contains("OP_LOOP"), "{}", text);
+        assert!(text.contains("OP_JUMP_IF_FALSE"));
+        // OP_LOOP's target must be a lower offset than the instruction itself
+        // (backward, unlike every other jump).
+        let loop_line = text.lines().find(|l| l.contains("OP_LOOP")).unwrap();
+        let offset: usize = loop_line.trim_start().split_whitespace().next().unwrap().parse().unwrap();
+        let target: usize = loop_line.split("-> ").nth(1).unwrap().trim().parse().unwrap();
+        assert!(target < offset, "{}", loop_line);
+    }
+
+    #[test]
     fn test_int_to_float_widening_emits_to_float() {
         let program = compile("let x = 1.5; x = 2;");
         let text = disassemble_chunk(&program.script, "script");
@@ -514,6 +547,8 @@ mod tests {
              is_even(10);",
             "let counter = 10; ++counter; counter++; --counter; counter--;",
             "print(min(4, 2, 9, 1)); print(max(4, 2, 9, 1));",
+            "let i = 0; while i < 5 { i = i + 1; }",
+            "let total = 0; for i in 0..5 { total = total + i; }",
         ];
         for source in programs {
             let program = compile(source);

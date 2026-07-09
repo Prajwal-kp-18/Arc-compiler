@@ -222,6 +222,10 @@ impl<'a> VM<'a> {
                         self.frames[frame_idx].ip = at + 3 + jump;
                     }
                 }
+                OpCode::Loop => {
+                    let distance = chunk.read_u16(at + 1) as usize;
+                    self.frames[frame_idx].ip = at + 3 - distance;
+                }
                 OpCode::Call => {
                     let function_id = chunk.read_u16(at + 1) as usize;
                     let argc = chunk.code[at + 3] as usize;
@@ -424,6 +428,11 @@ mod tests {
             "fn f() { 7; } f();",
             "fn sq(n: Int) { return n * n; } sq(2) + sq(3);",
             "let g = 41; fn get() { return g + 1; } get();",
+            "let sum = 0; let i = 0; while i < 5 { sum = sum + i; i = i + 1; } sum;",
+            "let x = 0; while false { x = 99; } x;",
+            "let total = 0; for i in 0..5 { total = total + i; } total;",
+            "let count = 0; let i = 0; while i < 3 { let j = 0; while j < 3 { count = count + 1; j = j + 1; } i = i + 1; } count;",
+            "fn first_over(limit) { let i = 0; while true { if i > limit { return i; } i = i + 1; } } first_over(3);",
         ];
         for source in programs {
             assert_parity(source);

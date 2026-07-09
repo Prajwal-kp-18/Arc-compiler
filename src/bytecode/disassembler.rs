@@ -52,6 +52,12 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize, out: &mut String) -> us
             out.push_str(&format!("{} {:<16} {:4} -> {:04}\n", prefix, op.mnemonic(), jump, target));
             offset + 3
         }
+        OpCode::Loop => {
+            let distance = chunk.read_u16(offset + 1);
+            let target = offset + 3 - distance as usize;
+            out.push_str(&format!("{} {:<16} {:4} -> {:04}\n", prefix, op.mnemonic(), distance, target));
+            offset + 3
+        }
         OpCode::Call => {
             let function_id = chunk.read_u16(offset + 1);
             let argc = chunk.code[offset + 3];

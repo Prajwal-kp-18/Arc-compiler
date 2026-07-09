@@ -84,4 +84,15 @@ impl Chunk {
         self.code[operand_at] = bytes[0];
         self.code[operand_at + 1] = bytes[1];
     }
+
+    /// Emits an `OP_LOOP` (backward jump) landing at `loop_start`, a code
+    /// offset already behind the current end of the chunk — the loop
+    /// header's start is always known by the time the back-edge is emitted,
+    /// so unlike forward jumps this needs no later patching.
+    pub fn emit_loop(&mut self, loop_start: usize, source_offset: u32) {
+        self.write_op(OpCode::Loop, source_offset);
+        let after_operand = self.code.len() + 2;
+        let distance = u16::try_from(after_operand - loop_start).expect("loop body exceeded u16::MAX bytes");
+        self.write_u16(distance, source_offset);
+    }
 }
