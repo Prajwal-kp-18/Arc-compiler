@@ -617,6 +617,82 @@ max("b", "a")    // "b"
 
 ---
 
+### int() / float() / str()
+Explicit type conversion.
+
+```arc
+int(x)      // Integer, Float, Boolean, or String -> Integer (parses String, truncates Float)
+float(x)    // Integer, Float, Boolean, or String -> Float (parses String)
+str(x)      // any value -> String, same text `print` would show
+```
+
+`int("abc")` and `float("abc")` are runtime errors (not parseable).
+
+---
+
+### len()
+`len(s)` — number of characters in a String, as an Integer.
+
+---
+
+### input()
+`input()` — reads one line from stdin, without the trailing newline, and returns it as a String. Takes no arguments.
+
+---
+
+### substr() / find() / char_at()
+String indexing/searching, all character- (not byte-) indexed.
+
+```arc
+substr(s, start, length)   // String; clamps out-of-range start/length instead of erroring
+find(s, sub)                // Integer index of the first occurrence of sub in s, or -1
+char_at(s, i)                // the single character at index i, as a one-character String
+```
+
+---
+
+### upper() / lower() / trim()
+```arc
+upper(s)   // uppercased copy
+lower(s)   // lowercased copy
+trim(s)    // copy with leading/trailing whitespace removed
+```
+
+---
+
+### ord() / chr()
+```arc
+ord(s)   // Integer Unicode code point of a single-character String s
+chr(i)   // the one-character String for code point i
+```
+
+---
+
+### abs() / sqrt() / floor() / ceil() / round()
+```arc
+abs(x)     // same type as x (Integer or Float)
+sqrt(x)    // Float; runtime error on a negative argument
+floor(x)   // Integer
+ceil(x)    // Integer
+round(x)   // Integer
+```
+
+---
+
+### assert()
+```arc
+assert(cond)
+assert(cond, message)
+```
+Raises a runtime error (using `message`, or `"assertion failed"` if omitted) when `cond` is falsy; otherwise has no effect.
+
+---
+
+### clock()
+`clock()` — seconds since the Unix epoch, as a Float. No arguments. Meant for timing/benchmarking, not for deterministic output.
+
+---
+
 ## Type System
 
 ### Value Types
