@@ -1,7 +1,7 @@
 # Arc Compiler
 
 Arc is a small interpreted expression language implemented in Rust. It includes
-a lexer, precedence-aware parser, a resolver that statically slot- and
+a lexer, precedence-aware parser, a resolver that statically slot and
 type-resolves every name before evaluation, an evaluator, REPL, file runner,
 and diagnostics with source spans and suggestions.
 
@@ -18,7 +18,9 @@ and diagnostics with source spans and suggestions.
 - **Conditionals**: `if condition { ... } else { ... }` with truthy/falsy condition evaluation.
 - **User-defined functions**: `fn name(arg1, arg2) { return value }`, with optional
   parameter type annotations (`fn name(arg1: Int) { ... }`).
-- **Built-in functions**: `print(...)`, `min(...)`, and `max(...)`.
+- **Built-in functions**: `print`, `min`, `max`, `int`, `float`, `str`, `len`, `input`,
+  `substr`, `find`, `upper`, `lower`, `trim`, `char_at`, `ord`, `chr`, `abs`, `sqrt`,
+  `floor`, `ceil`, `round`, `assert`, and `clock` — see [DOCUMENTATION.md](DOCUMENTATION.md#built-in-functions).
 - **Comments**: Single-line `//` and multi-line `/* ... */`.
 - **REPL and file execution**: Run interactively or execute `.arc` files.
 
