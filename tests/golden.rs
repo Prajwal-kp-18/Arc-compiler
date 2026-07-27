@@ -44,6 +44,16 @@ const PROGRAMS: &[(&str, &str)] = &[
     ),
     ("builtins", "print(min(4, 2, 9, 1)); print(max(4, 2, 9, 1)); print(min(3.5, 2, 4.1)); print(max(\"a\", \"b\"));"),
     (
+        "new_builtins",
+        r#"print(int("42"), int(3.9), float("3.5"), str(42));
+           print(len("hello"), substr("hello world", 6, 5), find("hello", "ll"));
+           print(upper("hi"), lower("HI"), trim("  hi  "), char_at("hi", 1));
+           print(ord("A"), chr(65));
+           print(abs(-5), abs(-5.5), sqrt(16.0), floor(3.7), ceil(3.2), round(3.5));
+           assert(1 + 1 == 2, "math broke");
+           print("ok");"#,
+    ),
+    (
         "implicit_return",
         "fn f() { 7; } print(f());",
     ),
