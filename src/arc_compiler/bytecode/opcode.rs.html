@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/bytecode/opcode.rs`."><title>opcode.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="arc_compiler" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.0 (2d8144b78 2026-07-07)" data-channel="1.97.0" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">arc_compiler/bytecode/</div>opcode.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # OpCode
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `src/bytecode/opcode.rs`."><title>opcode.rs - source</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../../" data-static-root-path="../../../static.files/" data-current-crate="arc_compiler" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../../static.files/storage-41dd4d93.js"></script><script defer src="../../../static.files/src-script-813739b1.js"></script><script defer src="../../../src-files.js"></script><script defer src="../../../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../../static.files/favicon-044be391.svg"></head><body class="rustdoc src"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="src-sidebar-title"><h2>Files</h2></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1><div class="sub-heading">arc_compiler/bytecode/</div>opcode.rs</h1><rustdoc-toolbar></rustdoc-toolbar></div><div class="example-wrap digits-3"><pre class="rust"><code><a href=#1 id=1 data-nosnippet>1</a><span class="doccomment">//! # OpCode
 <a href=#2 id=2 data-nosnippet>2</a>//!
 <a href=#3 id=3 data-nosnippet>3</a>//! The bytecode instruction set. Deliberately small and generic — every
 <a href=#4 id=4 data-nosnippet>4</a>//! arithmetic/comparison op dispatches dynamically over the same tagged
@@ -14,7 +14,7 @@
 <a href=#14 id=14 data-nosnippet>14</a>//! | `GetLocal` / `SetLocal` / `GetGlobal` / `SetGlobal` | `u16` slot index |
 <a href=#15 id=15 data-nosnippet>15</a>//! | `Jump` / `JumpIfFalse` | `u16` forward offset (added to ip after the operand) |
 <a href=#16 id=16 data-nosnippet>16</a>//! | `Call` | `u16` function id, `u8` argument count |
-<a href=#17 id=17 data-nosnippet>17</a>//! | `Print` / `Max` / `Min` | `u8` argument count |
+<a href=#17 id=17 data-nosnippet>17</a>//! | `CallBuiltin` | `u8` [`BuiltinFn`](crate::ast::resolver::BuiltinFn) id, `u8` argument count |
 <a href=#18 id=18 data-nosnippet>18</a>//! | everything else | none |
 <a href=#19 id=19 data-nosnippet>19</a></span><span class="attr">#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 <a href=#20 id=20 data-nosnippet>20</a>#[repr(u8)]
@@ -73,99 +73,94 @@
 <a href=#73 id=73 data-nosnippet>73</a>    <span class="doccomment">/// Ends the current function/script chunk; the return value is
 <a href=#74 id=74 data-nosnippet>74</a>    /// whatever's on top of the stack.
 <a href=#75 id=75 data-nosnippet>75</a>    </span>Return = <span class="number">31</span>,
-<a href=#76 id=76 data-nosnippet>76</a>    <span class="doccomment">/// Built-in `print(...)`: `u8` argument count. Pops the arguments and
-<a href=#77 id=77 data-nosnippet>77</a>    /// pushes an inert placeholder (see design doc §5) since print has no
-<a href=#78 id=78 data-nosnippet>78</a>    /// real return value.
-<a href=#79 id=79 data-nosnippet>79</a>    </span>Print = <span class="number">32</span>,
-<a href=#80 id=80 data-nosnippet>80</a>    Max = <span class="number">33</span>,
-<a href=#81 id=81 data-nosnippet>81</a>    Min = <span class="number">34</span>,
-<a href=#82 id=82 data-nosnippet>82</a>}
-<a href=#83 id=83 data-nosnippet>83</a>
-<a href=#84 id=84 data-nosnippet>84</a><span class="kw">impl </span>OpCode {
-<a href=#85 id=85 data-nosnippet>85</a>    <span class="kw">pub fn </span>from_byte(byte: u8) -&gt; <span class="prelude-ty">Option</span>&lt;OpCode&gt; {
-<a href=#86 id=86 data-nosnippet>86</a>        <span class="kw">use </span>OpCode::<span class="kw-2">*</span>;
-<a href=#87 id=87 data-nosnippet>87</a>        <span class="prelude-val">Some</span>(<span class="kw">match </span>byte {
-<a href=#88 id=88 data-nosnippet>88</a>            <span class="number">0 </span>=&gt; Constant,
-<a href=#89 id=89 data-nosnippet>89</a>            <span class="number">1 </span>=&gt; True,
-<a href=#90 id=90 data-nosnippet>90</a>            <span class="number">2 </span>=&gt; False,
-<a href=#91 id=91 data-nosnippet>91</a>            <span class="number">3 </span>=&gt; Pop,
-<a href=#92 id=92 data-nosnippet>92</a>            <span class="number">4 </span>=&gt; GetLocal,
-<a href=#93 id=93 data-nosnippet>93</a>            <span class="number">5 </span>=&gt; SetLocal,
-<a href=#94 id=94 data-nosnippet>94</a>            <span class="number">6 </span>=&gt; GetGlobal,
-<a href=#95 id=95 data-nosnippet>95</a>            <span class="number">7 </span>=&gt; SetGlobal,
-<a href=#96 id=96 data-nosnippet>96</a>            <span class="number">8 </span>=&gt; ToFloat,
-<a href=#97 id=97 data-nosnippet>97</a>            <span class="number">9 </span>=&gt; Add,
-<a href=#98 id=98 data-nosnippet>98</a>            <span class="number">10 </span>=&gt; Subtract,
-<a href=#99 id=99 data-nosnippet>99</a>            <span class="number">11 </span>=&gt; Multiply,
-<a href=#100 id=100 data-nosnippet>100</a>            <span class="number">12 </span>=&gt; Divide,
-<a href=#101 id=101 data-nosnippet>101</a>            <span class="number">13 </span>=&gt; Modulo,
-<a href=#102 id=102 data-nosnippet>102</a>            <span class="number">14 </span>=&gt; Power,
-<a href=#103 id=103 data-nosnippet>103</a>            <span class="number">15 </span>=&gt; BitAnd,
-<a href=#104 id=104 data-nosnippet>104</a>            <span class="number">16 </span>=&gt; BitOr,
-<a href=#105 id=105 data-nosnippet>105</a>            <span class="number">17 </span>=&gt; BitXor,
-<a href=#106 id=106 data-nosnippet>106</a>            <span class="number">18 </span>=&gt; ShiftLeft,
-<a href=#107 id=107 data-nosnippet>107</a>            <span class="number">19 </span>=&gt; ShiftRight,
-<a href=#108 id=108 data-nosnippet>108</a>            <span class="number">20 </span>=&gt; Equal,
-<a href=#109 id=109 data-nosnippet>109</a>            <span class="number">21 </span>=&gt; NotEqual,
-<a href=#110 id=110 data-nosnippet>110</a>            <span class="number">22 </span>=&gt; Less,
-<a href=#111 id=111 data-nosnippet>111</a>            <span class="number">23 </span>=&gt; Greater,
-<a href=#112 id=112 data-nosnippet>112</a>            <span class="number">24 </span>=&gt; LessEqual,
-<a href=#113 id=113 data-nosnippet>113</a>            <span class="number">25 </span>=&gt; GreaterEqual,
-<a href=#114 id=114 data-nosnippet>114</a>            <span class="number">26 </span>=&gt; Negate,
-<a href=#115 id=115 data-nosnippet>115</a>            <span class="number">27 </span>=&gt; Not,
-<a href=#116 id=116 data-nosnippet>116</a>            <span class="number">28 </span>=&gt; Jump,
-<a href=#117 id=117 data-nosnippet>117</a>            <span class="number">29 </span>=&gt; JumpIfFalse,
-<a href=#118 id=118 data-nosnippet>118</a>            <span class="number">35 </span>=&gt; Loop,
-<a href=#119 id=119 data-nosnippet>119</a>            <span class="number">30 </span>=&gt; Call,
-<a href=#120 id=120 data-nosnippet>120</a>            <span class="number">31 </span>=&gt; Return,
-<a href=#121 id=121 data-nosnippet>121</a>            <span class="number">32 </span>=&gt; Print,
-<a href=#122 id=122 data-nosnippet>122</a>            <span class="number">33 </span>=&gt; Max,
-<a href=#123 id=123 data-nosnippet>123</a>            <span class="number">34 </span>=&gt; Min,
-<a href=#124 id=124 data-nosnippet>124</a>            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">None</span>,
-<a href=#125 id=125 data-nosnippet>125</a>        })
-<a href=#126 id=126 data-nosnippet>126</a>    }
-<a href=#127 id=127 data-nosnippet>127</a>
-<a href=#128 id=128 data-nosnippet>128</a>    <span class="doccomment">/// Human-readable mnemonic, used by the disassembler.
-<a href=#129 id=129 data-nosnippet>129</a>    </span><span class="kw">pub fn </span>mnemonic(<span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
-<a href=#130 id=130 data-nosnippet>130</a>        <span class="kw">use </span>OpCode::<span class="kw-2">*</span>;
-<a href=#131 id=131 data-nosnippet>131</a>        <span class="kw">match </span><span class="self">self </span>{
-<a href=#132 id=132 data-nosnippet>132</a>            Constant =&gt; <span class="string">"OP_CONSTANT"</span>,
-<a href=#133 id=133 data-nosnippet>133</a>            True =&gt; <span class="string">"OP_TRUE"</span>,
-<a href=#134 id=134 data-nosnippet>134</a>            False =&gt; <span class="string">"OP_FALSE"</span>,
-<a href=#135 id=135 data-nosnippet>135</a>            Pop =&gt; <span class="string">"OP_POP"</span>,
-<a href=#136 id=136 data-nosnippet>136</a>            GetLocal =&gt; <span class="string">"OP_GET_LOCAL"</span>,
-<a href=#137 id=137 data-nosnippet>137</a>            SetLocal =&gt; <span class="string">"OP_SET_LOCAL"</span>,
-<a href=#138 id=138 data-nosnippet>138</a>            GetGlobal =&gt; <span class="string">"OP_GET_GLOBAL"</span>,
-<a href=#139 id=139 data-nosnippet>139</a>            SetGlobal =&gt; <span class="string">"OP_SET_GLOBAL"</span>,
-<a href=#140 id=140 data-nosnippet>140</a>            ToFloat =&gt; <span class="string">"OP_TO_FLOAT"</span>,
-<a href=#141 id=141 data-nosnippet>141</a>            Add =&gt; <span class="string">"OP_ADD"</span>,
-<a href=#142 id=142 data-nosnippet>142</a>            Subtract =&gt; <span class="string">"OP_SUBTRACT"</span>,
-<a href=#143 id=143 data-nosnippet>143</a>            Multiply =&gt; <span class="string">"OP_MULTIPLY"</span>,
-<a href=#144 id=144 data-nosnippet>144</a>            Divide =&gt; <span class="string">"OP_DIVIDE"</span>,
-<a href=#145 id=145 data-nosnippet>145</a>            Modulo =&gt; <span class="string">"OP_MODULO"</span>,
-<a href=#146 id=146 data-nosnippet>146</a>            Power =&gt; <span class="string">"OP_POWER"</span>,
-<a href=#147 id=147 data-nosnippet>147</a>            BitAnd =&gt; <span class="string">"OP_BIT_AND"</span>,
-<a href=#148 id=148 data-nosnippet>148</a>            BitOr =&gt; <span class="string">"OP_BIT_OR"</span>,
-<a href=#149 id=149 data-nosnippet>149</a>            BitXor =&gt; <span class="string">"OP_BIT_XOR"</span>,
-<a href=#150 id=150 data-nosnippet>150</a>            ShiftLeft =&gt; <span class="string">"OP_SHIFT_LEFT"</span>,
-<a href=#151 id=151 data-nosnippet>151</a>            ShiftRight =&gt; <span class="string">"OP_SHIFT_RIGHT"</span>,
-<a href=#152 id=152 data-nosnippet>152</a>            Equal =&gt; <span class="string">"OP_EQUAL"</span>,
-<a href=#153 id=153 data-nosnippet>153</a>            NotEqual =&gt; <span class="string">"OP_NOT_EQUAL"</span>,
-<a href=#154 id=154 data-nosnippet>154</a>            Less =&gt; <span class="string">"OP_LESS"</span>,
-<a href=#155 id=155 data-nosnippet>155</a>            Greater =&gt; <span class="string">"OP_GREATER"</span>,
-<a href=#156 id=156 data-nosnippet>156</a>            LessEqual =&gt; <span class="string">"OP_LESS_EQUAL"</span>,
-<a href=#157 id=157 data-nosnippet>157</a>            GreaterEqual =&gt; <span class="string">"OP_GREATER_EQUAL"</span>,
-<a href=#158 id=158 data-nosnippet>158</a>            Negate =&gt; <span class="string">"OP_NEGATE"</span>,
-<a href=#159 id=159 data-nosnippet>159</a>            Not =&gt; <span class="string">"OP_NOT"</span>,
-<a href=#160 id=160 data-nosnippet>160</a>            Jump =&gt; <span class="string">"OP_JUMP"</span>,
-<a href=#161 id=161 data-nosnippet>161</a>            JumpIfFalse =&gt; <span class="string">"OP_JUMP_IF_FALSE"</span>,
-<a href=#162 id=162 data-nosnippet>162</a>            Loop =&gt; <span class="string">"OP_LOOP"</span>,
-<a href=#163 id=163 data-nosnippet>163</a>            Call =&gt; <span class="string">"OP_CALL"</span>,
-<a href=#164 id=164 data-nosnippet>164</a>            Return =&gt; <span class="string">"OP_RETURN"</span>,
-<a href=#165 id=165 data-nosnippet>165</a>            Print =&gt; <span class="string">"OP_PRINT"</span>,
-<a href=#166 id=166 data-nosnippet>166</a>            Max =&gt; <span class="string">"OP_MAX"</span>,
-<a href=#167 id=167 data-nosnippet>167</a>            Min =&gt; <span class="string">"OP_MIN"</span>,
-<a href=#168 id=168 data-nosnippet>168</a>        }
-<a href=#169 id=169 data-nosnippet>169</a>    }
-<a href=#170 id=170 data-nosnippet>170</a>}
+<a href=#76 id=76 data-nosnippet>76</a>    <span class="doccomment">/// Calls a built-in function: `u8` `BuiltinFn` id, `u8` argument count.
+<a href=#77 id=77 data-nosnippet>77</a>    /// Arguments are already on the stack, pushed left-to-right; dispatches
+<a href=#78 id=78 data-nosnippet>78</a>    /// through `natives::call_builtin`, the same runtime the tree-walking
+<a href=#79 id=79 data-nosnippet>79</a>    /// evaluator calls, so both backends share every builtin's semantics.
+<a href=#80 id=80 data-nosnippet>80</a>    </span>CallBuiltin = <span class="number">32</span>,
+<a href=#81 id=81 data-nosnippet>81</a>}
+<a href=#82 id=82 data-nosnippet>82</a>
+<a href=#83 id=83 data-nosnippet>83</a><span class="kw">impl </span>OpCode {
+<a href=#84 id=84 data-nosnippet>84</a>    <span class="kw">pub fn </span>from_byte(byte: u8) -&gt; <span class="prelude-ty">Option</span>&lt;OpCode&gt; {
+<a href=#85 id=85 data-nosnippet>85</a>        <span class="kw">use </span>OpCode::<span class="kw-2">*</span>;
+<a href=#86 id=86 data-nosnippet>86</a>        <span class="prelude-val">Some</span>(<span class="kw">match </span>byte {
+<a href=#87 id=87 data-nosnippet>87</a>            <span class="number">0 </span>=&gt; Constant,
+<a href=#88 id=88 data-nosnippet>88</a>            <span class="number">1 </span>=&gt; True,
+<a href=#89 id=89 data-nosnippet>89</a>            <span class="number">2 </span>=&gt; False,
+<a href=#90 id=90 data-nosnippet>90</a>            <span class="number">3 </span>=&gt; Pop,
+<a href=#91 id=91 data-nosnippet>91</a>            <span class="number">4 </span>=&gt; GetLocal,
+<a href=#92 id=92 data-nosnippet>92</a>            <span class="number">5 </span>=&gt; SetLocal,
+<a href=#93 id=93 data-nosnippet>93</a>            <span class="number">6 </span>=&gt; GetGlobal,
+<a href=#94 id=94 data-nosnippet>94</a>            <span class="number">7 </span>=&gt; SetGlobal,
+<a href=#95 id=95 data-nosnippet>95</a>            <span class="number">8 </span>=&gt; ToFloat,
+<a href=#96 id=96 data-nosnippet>96</a>            <span class="number">9 </span>=&gt; Add,
+<a href=#97 id=97 data-nosnippet>97</a>            <span class="number">10 </span>=&gt; Subtract,
+<a href=#98 id=98 data-nosnippet>98</a>            <span class="number">11 </span>=&gt; Multiply,
+<a href=#99 id=99 data-nosnippet>99</a>            <span class="number">12 </span>=&gt; Divide,
+<a href=#100 id=100 data-nosnippet>100</a>            <span class="number">13 </span>=&gt; Modulo,
+<a href=#101 id=101 data-nosnippet>101</a>            <span class="number">14 </span>=&gt; Power,
+<a href=#102 id=102 data-nosnippet>102</a>            <span class="number">15 </span>=&gt; BitAnd,
+<a href=#103 id=103 data-nosnippet>103</a>            <span class="number">16 </span>=&gt; BitOr,
+<a href=#104 id=104 data-nosnippet>104</a>            <span class="number">17 </span>=&gt; BitXor,
+<a href=#105 id=105 data-nosnippet>105</a>            <span class="number">18 </span>=&gt; ShiftLeft,
+<a href=#106 id=106 data-nosnippet>106</a>            <span class="number">19 </span>=&gt; ShiftRight,
+<a href=#107 id=107 data-nosnippet>107</a>            <span class="number">20 </span>=&gt; Equal,
+<a href=#108 id=108 data-nosnippet>108</a>            <span class="number">21 </span>=&gt; NotEqual,
+<a href=#109 id=109 data-nosnippet>109</a>            <span class="number">22 </span>=&gt; Less,
+<a href=#110 id=110 data-nosnippet>110</a>            <span class="number">23 </span>=&gt; Greater,
+<a href=#111 id=111 data-nosnippet>111</a>            <span class="number">24 </span>=&gt; LessEqual,
+<a href=#112 id=112 data-nosnippet>112</a>            <span class="number">25 </span>=&gt; GreaterEqual,
+<a href=#113 id=113 data-nosnippet>113</a>            <span class="number">26 </span>=&gt; Negate,
+<a href=#114 id=114 data-nosnippet>114</a>            <span class="number">27 </span>=&gt; Not,
+<a href=#115 id=115 data-nosnippet>115</a>            <span class="number">28 </span>=&gt; Jump,
+<a href=#116 id=116 data-nosnippet>116</a>            <span class="number">29 </span>=&gt; JumpIfFalse,
+<a href=#117 id=117 data-nosnippet>117</a>            <span class="number">35 </span>=&gt; Loop,
+<a href=#118 id=118 data-nosnippet>118</a>            <span class="number">30 </span>=&gt; Call,
+<a href=#119 id=119 data-nosnippet>119</a>            <span class="number">31 </span>=&gt; Return,
+<a href=#120 id=120 data-nosnippet>120</a>            <span class="number">32 </span>=&gt; CallBuiltin,
+<a href=#121 id=121 data-nosnippet>121</a>            <span class="kw">_ </span>=&gt; <span class="kw">return </span><span class="prelude-val">None</span>,
+<a href=#122 id=122 data-nosnippet>122</a>        })
+<a href=#123 id=123 data-nosnippet>123</a>    }
+<a href=#124 id=124 data-nosnippet>124</a>
+<a href=#125 id=125 data-nosnippet>125</a>    <span class="doccomment">/// Human-readable mnemonic, used by the disassembler.
+<a href=#126 id=126 data-nosnippet>126</a>    </span><span class="kw">pub fn </span>mnemonic(<span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">'static </span>str {
+<a href=#127 id=127 data-nosnippet>127</a>        <span class="kw">use </span>OpCode::<span class="kw-2">*</span>;
+<a href=#128 id=128 data-nosnippet>128</a>        <span class="kw">match </span><span class="self">self </span>{
+<a href=#129 id=129 data-nosnippet>129</a>            Constant =&gt; <span class="string">"OP_CONSTANT"</span>,
+<a href=#130 id=130 data-nosnippet>130</a>            True =&gt; <span class="string">"OP_TRUE"</span>,
+<a href=#131 id=131 data-nosnippet>131</a>            False =&gt; <span class="string">"OP_FALSE"</span>,
+<a href=#132 id=132 data-nosnippet>132</a>            Pop =&gt; <span class="string">"OP_POP"</span>,
+<a href=#133 id=133 data-nosnippet>133</a>            GetLocal =&gt; <span class="string">"OP_GET_LOCAL"</span>,
+<a href=#134 id=134 data-nosnippet>134</a>            SetLocal =&gt; <span class="string">"OP_SET_LOCAL"</span>,
+<a href=#135 id=135 data-nosnippet>135</a>            GetGlobal =&gt; <span class="string">"OP_GET_GLOBAL"</span>,
+<a href=#136 id=136 data-nosnippet>136</a>            SetGlobal =&gt; <span class="string">"OP_SET_GLOBAL"</span>,
+<a href=#137 id=137 data-nosnippet>137</a>            ToFloat =&gt; <span class="string">"OP_TO_FLOAT"</span>,
+<a href=#138 id=138 data-nosnippet>138</a>            Add =&gt; <span class="string">"OP_ADD"</span>,
+<a href=#139 id=139 data-nosnippet>139</a>            Subtract =&gt; <span class="string">"OP_SUBTRACT"</span>,
+<a href=#140 id=140 data-nosnippet>140</a>            Multiply =&gt; <span class="string">"OP_MULTIPLY"</span>,
+<a href=#141 id=141 data-nosnippet>141</a>            Divide =&gt; <span class="string">"OP_DIVIDE"</span>,
+<a href=#142 id=142 data-nosnippet>142</a>            Modulo =&gt; <span class="string">"OP_MODULO"</span>,
+<a href=#143 id=143 data-nosnippet>143</a>            Power =&gt; <span class="string">"OP_POWER"</span>,
+<a href=#144 id=144 data-nosnippet>144</a>            BitAnd =&gt; <span class="string">"OP_BIT_AND"</span>,
+<a href=#145 id=145 data-nosnippet>145</a>            BitOr =&gt; <span class="string">"OP_BIT_OR"</span>,
+<a href=#146 id=146 data-nosnippet>146</a>            BitXor =&gt; <span class="string">"OP_BIT_XOR"</span>,
+<a href=#147 id=147 data-nosnippet>147</a>            ShiftLeft =&gt; <span class="string">"OP_SHIFT_LEFT"</span>,
+<a href=#148 id=148 data-nosnippet>148</a>            ShiftRight =&gt; <span class="string">"OP_SHIFT_RIGHT"</span>,
+<a href=#149 id=149 data-nosnippet>149</a>            Equal =&gt; <span class="string">"OP_EQUAL"</span>,
+<a href=#150 id=150 data-nosnippet>150</a>            NotEqual =&gt; <span class="string">"OP_NOT_EQUAL"</span>,
+<a href=#151 id=151 data-nosnippet>151</a>            Less =&gt; <span class="string">"OP_LESS"</span>,
+<a href=#152 id=152 data-nosnippet>152</a>            Greater =&gt; <span class="string">"OP_GREATER"</span>,
+<a href=#153 id=153 data-nosnippet>153</a>            LessEqual =&gt; <span class="string">"OP_LESS_EQUAL"</span>,
+<a href=#154 id=154 data-nosnippet>154</a>            GreaterEqual =&gt; <span class="string">"OP_GREATER_EQUAL"</span>,
+<a href=#155 id=155 data-nosnippet>155</a>            Negate =&gt; <span class="string">"OP_NEGATE"</span>,
+<a href=#156 id=156 data-nosnippet>156</a>            Not =&gt; <span class="string">"OP_NOT"</span>,
+<a href=#157 id=157 data-nosnippet>157</a>            Jump =&gt; <span class="string">"OP_JUMP"</span>,
+<a href=#158 id=158 data-nosnippet>158</a>            JumpIfFalse =&gt; <span class="string">"OP_JUMP_IF_FALSE"</span>,
+<a href=#159 id=159 data-nosnippet>159</a>            Loop =&gt; <span class="string">"OP_LOOP"</span>,
+<a href=#160 id=160 data-nosnippet>160</a>            Call =&gt; <span class="string">"OP_CALL"</span>,
+<a href=#161 id=161 data-nosnippet>161</a>            Return =&gt; <span class="string">"OP_RETURN"</span>,
+<a href=#162 id=162 data-nosnippet>162</a>            CallBuiltin =&gt; <span class="string">"OP_CALL_BUILTIN"</span>,
+<a href=#163 id=163 data-nosnippet>163</a>        }
+<a href=#164 id=164 data-nosnippet>164</a>    }
+<a href=#165 id=165 data-nosnippet>165</a>}
 </code></pre></div></section></main></body></html>

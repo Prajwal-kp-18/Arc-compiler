@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"enum":["BuiltinFn","ResolvedBinding","ResolvedCall"],"fn":["builtin_named"],"struct":["BlockScope","Frame","FunctionId","Resolver","SlotIndex","VarInfo"]};
+window.SIDEBAR_ITEMS = {"constant":["BUILTIN_NAMES"],"enum":["BuiltinFn","ResolvedBinding","ResolvedCall"],"fn":["builtin_named"],"struct":["BlockScope","Frame","FunctionId","Resolver","SlotIndex","VarInfo"]};
