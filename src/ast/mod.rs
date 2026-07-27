@@ -25,6 +25,7 @@ pub mod evaluator;
 pub mod types;
 pub mod resolver;
 pub mod diagnostic;
+pub mod natives;
 
 use std::cell::Cell;
 use crate::ast::lexer::Token;

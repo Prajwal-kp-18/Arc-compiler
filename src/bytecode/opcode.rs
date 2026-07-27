@@ -14,7 +14,7 @@
 //! | `GetLocal` / `SetLocal` / `GetGlobal` / `SetGlobal` | `u16` slot index |
 //! | `Jump` / `JumpIfFalse` | `u16` forward offset (added to ip after the operand) |
 //! | `Call` | `u16` function id, `u8` argument count |
-//! | `Print` / `Max` / `Min` | `u8` argument count |
+//! | `CallBuiltin` | `u8` [`BuiltinFn`](crate::ast::resolver::BuiltinFn) id, `u8` argument count |
 //! | everything else | none |
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -73,12 +73,11 @@ pub enum OpCode {
     /// Ends the current function/script chunk; the return value is
     /// whatever's on top of the stack.
     Return = 31,
-    /// Built-in `print(...)`: `u8` argument count. Pops the arguments and
-    /// pushes an inert placeholder (see design doc §5) since print has no
-    /// real return value.
-    Print = 32,
-    Max = 33,
-    Min = 34,
+    /// Calls a built-in function: `u8` `BuiltinFn` id, `u8` argument count.
+    /// Arguments are already on the stack, pushed left-to-right; dispatches
+    /// through `natives::call_builtin`, the same runtime the tree-walking
+    /// evaluator calls, so both backends share every builtin's semantics.
+    CallBuiltin = 32,
 }
 
 impl OpCode {
@@ -118,9 +117,7 @@ impl OpCode {
             35 => Loop,
             30 => Call,
             31 => Return,
-            32 => Print,
-            33 => Max,
-            34 => Min,
+            32 => CallBuiltin,
             _ => return None,
         })
     }
@@ -162,9 +159,7 @@ impl OpCode {
             Loop => "OP_LOOP",
             Call => "OP_CALL",
             Return => "OP_RETURN",
-            Print => "OP_PRINT",
-            Max => "OP_MAX",
-            Min => "OP_MIN",
+            CallBuiltin => "OP_CALL_BUILTIN",
         }
     }
 }

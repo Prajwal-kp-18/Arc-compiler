@@ -9,7 +9,7 @@
 //! `ResolvedCall` straight off the AST's `Cell` fields instead of
 //! re-deriving scope.
 
-use crate::ast::resolver::{BuiltinFn, ResolvedBinding, ResolvedCall};
+use crate::ast::resolver::{ResolvedBinding, ResolvedCall};
 use crate::ast::types::Value;
 use crate::ast::{
     Ast, ASTBinaryExpression, ASTBinaryOperatorKind, ASTExpression, ASTExpressionKind,
@@ -410,12 +410,8 @@ impl BytecodeCompiler {
                 self.current().write_u8(argc, offset);
             }
             ResolvedCall::Builtin(builtin) => {
-                let op = match builtin {
-                    BuiltinFn::Print => OpCode::Print,
-                    BuiltinFn::Max => OpCode::Max,
-                    BuiltinFn::Min => OpCode::Min,
-                };
-                self.emit(op, offset);
+                self.emit(OpCode::CallBuiltin, offset);
+                self.current().write_u8(builtin as u8, offset);
                 self.current().write_u8(argc, offset);
             }
         }
@@ -485,7 +481,7 @@ mod tests {
         assert!(text.contains("OP_JUMP_IF_FALSE"));
         assert!(text.contains("OP_JUMP "));
         assert!(text.contains("OP_GREATER"));
-        assert!(text.contains("OP_PRINT"));
+        assert!(text.contains("OP_CALL_BUILTIN"));
     }
 
     #[test]
@@ -568,8 +564,8 @@ mod tests {
         let lines = op_lines(&text);
         assert_eq!(lines.len(), 4, "{:#?}", lines);
         assert!(lines[0].contains("OP_CONSTANT"));
-        assert!(lines[1].contains("OP_PRINT"));
-        assert!(lines[2].contains("OP_PRINT"));
+        assert!(lines[1].contains("OP_CALL_BUILTIN"));
+        assert!(lines[2].contains("OP_CALL_BUILTIN"));
         assert!(lines[3].contains("OP_RETURN"));
     }
 

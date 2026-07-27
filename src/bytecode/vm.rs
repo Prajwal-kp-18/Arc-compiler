@@ -33,6 +33,8 @@
 use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::ast::evaluator::ASTEvaluator;
 use crate::ast::lexer::TextSpan;
+use crate::ast::natives::call_builtin;
+use crate::ast::resolver::BuiltinFn;
 use crate::ast::types::{apply_binary, Value};
 use crate::ast::ASTBinaryOperatorKind;
 use crate::bytecode::chunk::Chunk;
@@ -272,36 +274,13 @@ impl<'a> VM<'a> {
                     // Leave the return value for the caller.
                     self.stack.push(value);
                 }
-                OpCode::Print => {
-                    let argc = chunk.code[at + 1] as usize;
-                    let args = self.pop_args(argc, "print", offset)?;
-                    let line = args.iter().map(Value::to_string).collect::<Vec<_>>().join(" ");
-                    println!("{}", line);
-                    self.stack.push(Value::Unit); // print has no value
-                    self.frames[frame_idx].ip = at + 2;
-                }
-                OpCode::Max | OpCode::Min => {
-                    let name = if op == OpCode::Max { "max" } else { "min" };
-                    let argc = chunk.code[at + 1] as usize;
-                    let args = self.pop_args(argc, name, offset)?;
-                    let Some((first, rest)) = args.split_first() else {
-                        return Err((format!("{}() requires at least one argument", name), offset));
-                    };
-                    let keep_current = if op == OpCode::Max {
-                        std::cmp::Ordering::Less
-                    } else {
-                        std::cmp::Ordering::Greater
-                    };
-                    let mut current = first.clone();
-                    for v in rest {
-                        match current.compare(v) {
-                            Ok(ordering) if ordering == keep_current => current = v.clone(),
-                            Ok(_) => (),
-                            Err(e) => return Err((format!("{}() comparison error: {}", name, e), offset)),
-                        }
-                    }
-                    self.stack.push(current);
-                    self.frames[frame_idx].ip = at + 2;
+                OpCode::CallBuiltin => {
+                    let builtin = BuiltinFn::from_u8(chunk.code[at + 1]).expect("compiler emits valid builtin ids");
+                    let argc = chunk.code[at + 2] as usize;
+                    let args = self.pop_args(argc, builtin.name(), offset)?;
+                    let result = call_builtin(builtin, &args).map_err(|e| (e, offset))?;
+                    self.stack.push(result);
+                    self.frames[frame_idx].ip = at + 3;
                 }
             }
         }

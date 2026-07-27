@@ -4,6 +4,7 @@
 //! bytecode while hand-tracing programs, and for debugging the VM once
 //! Phase 3 exists. Wired up behind `arc --dump-bytecode file.arc`.
 
+use crate::ast::resolver::BuiltinFn;
 use crate::bytecode::chunk::Chunk;
 use crate::bytecode::compiler::CompiledProgram;
 use crate::bytecode::opcode::OpCode;
@@ -64,10 +65,12 @@ fn disassemble_instruction(chunk: &Chunk, offset: usize, out: &mut String) -> us
             out.push_str(&format!("{} {:<16} fn#{} argc={}\n", prefix, op.mnemonic(), function_id, argc));
             offset + 4
         }
-        OpCode::Print | OpCode::Max | OpCode::Min => {
-            let argc = chunk.code[offset + 1];
-            out.push_str(&format!("{} {:<16} argc={}\n", prefix, op.mnemonic(), argc));
-            offset + 2
+        OpCode::CallBuiltin => {
+            let builtin_id = chunk.code[offset + 1];
+            let argc = chunk.code[offset + 2];
+            let name = BuiltinFn::from_u8(builtin_id).map(BuiltinFn::name).unwrap_or("?");
+            out.push_str(&format!("{} {:<16} {:<8} argc={}\n", prefix, op.mnemonic(), name, argc));
+            offset + 3
         }
         // No operand.
         OpCode::True

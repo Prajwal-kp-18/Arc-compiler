@@ -34,7 +34,8 @@ use crate::ast::{ASTVisitor, ASTBinaryExpression, ASTNumberExpression, ASTBinary
 use crate::ast::diagnostic::{Diagnostic, DiagnosticKind};
 use crate::ast::types::{apply_binary, Value};
 use crate::ast::lexer::TextSpan;
-use crate::ast::resolver::{BuiltinFn, ResolvedBinding, ResolvedCall, SlotIndex};
+use crate::ast::natives::call_builtin;
+use crate::ast::resolver::{ResolvedBinding, ResolvedCall, SlotIndex};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -530,9 +531,8 @@ impl ASTVisitor for ASTEvaluator {
         self.last_value = None;
     }
 
-    /// Dispatches to built-in function implementations.
-    ///
-    /// Currently `print`, `max`, and `min` are supported.
+    /// Dispatches to built-in function implementations via
+    /// [`call_builtin`], shared with the bytecode VM.
     fn visit_function_call(&mut self, func_call: &ASTFunctionCallExpression) {
         let call_span = func_call.token.as_ref().map(|t| t.span.clone());
         let mut argument_values = Vec::new();
@@ -551,66 +551,14 @@ impl ASTVisitor for ASTEvaluator {
             ResolvedCall::User(id) => {
                 self.call_user_function(id.0, argument_values);
             }
-            ResolvedCall::Builtin(BuiltinFn::Print) => {
-                for (i, value) in argument_values.iter().enumerate() {
-                    if i > 0 {
-                        print!(" ");
-                    }
-                    // The evaluator never stores Unit (its "no value" is
-                    // last_value = None), so Display covers every case.
-                    print!("{}", value);
-                }
-                println!();
-
-                // print() doesn't return a value
-                self.last_value = None;
-            }
-            ResolvedCall::Builtin(BuiltinFn::Max) => {
-                if argument_values.is_empty() {
-                    self.add_error_at("max() requires at least one argument", call_span.clone());
+            ResolvedCall::Builtin(builtin) => match call_builtin(builtin, &argument_values) {
+                Ok(Value::Unit) => self.last_value = None,
+                Ok(value) => self.last_value = Some(value),
+                Err(e) => {
+                    self.add_error_at(e, call_span.clone());
                     self.last_value = None;
-                    return;
                 }
-
-                // Reduce using compare
-                let mut current = argument_values[0].clone();
-                for v in argument_values.into_iter().skip(1) {
-                    match current.compare(&v) {
-                        Ok(std::cmp::Ordering::Less) => current = v,
-                        Ok(_) => (),
-                        Err(e) => {
-                            self.add_error_at(format!("max() comparison error: {}", e), call_span.clone());
-                            self.last_value = None;
-                            return;
-                        }
-                    }
-                }
-
-                self.last_value = Some(current);
-            }
-            ResolvedCall::Builtin(BuiltinFn::Min) => {
-                if argument_values.is_empty() {
-                    self.add_error_at("min() requires at least one argument", call_span.clone());
-                    self.last_value = None;
-                    return;
-                }
-
-                // Reduce using compare
-                let mut current = argument_values[0].clone();
-                for v in argument_values.into_iter().skip(1) {
-                    match current.compare(&v) {
-                        Ok(std::cmp::Ordering::Greater) => current = v,
-                        Ok(_) => (),
-                        Err(e) => {
-                            self.add_error_at(format!("min() comparison error: {}", e), call_span.clone());
-                            self.last_value = None;
-                            return;
-                        }
-                    }
-                }
-
-                self.last_value = Some(current);
-            }
+            },
         }
     }
 }

@@ -21,7 +21,7 @@
 //! targets a block not yet emitted and goes through the same forward
 //! `Jump`/deferred-patch path as before.
 
-use crate::ast::resolver::{BuiltinFn, SlotIndex};
+use crate::ast::resolver::SlotIndex;
 use crate::bytecode::chunk::Chunk;
 use crate::bytecode::compiler::{CompiledFunction, CompiledProgram};
 use crate::bytecode::opcode::OpCode;
@@ -222,12 +222,8 @@ impl ChunkBuilder<'_> {
                 for arg in args {
                     self.push_reg(*arg, offset);
                 }
-                let op = match builtin {
-                    BuiltinFn::Print => OpCode::Print,
-                    BuiltinFn::Max => OpCode::Max,
-                    BuiltinFn::Min => OpCode::Min,
-                };
-                self.chunk.write_op(op, offset);
+                self.chunk.write_op(OpCode::CallBuiltin, offset);
+                self.chunk.write_u8(*builtin as u8, offset);
                 self.chunk.write_u8(u8::try_from(args.len()).expect("more than 255 arguments"), offset);
                 self.pop_into_reg(*dst, offset);
             }

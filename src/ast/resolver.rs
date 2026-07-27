@@ -62,12 +62,99 @@ impl ResolvedBinding {
     }
 }
 
-/// The built-in functions the evaluator implements natively.
+/// The built-in functions the evaluator implements natively. Explicit
+/// discriminants so `as u8` (bytecode operand encoding, see
+/// [`BuiltinFn::from_u8`]) stays stable even if variants are reordered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum BuiltinFn {
-    Print,
-    Max,
-    Min,
+    Print = 0,
+    Max = 1,
+    Min = 2,
+    Int = 3,
+    Float = 4,
+    Str = 5,
+    Len = 6,
+    Input = 7,
+    Substr = 8,
+    Find = 9,
+    Upper = 10,
+    Lower = 11,
+    Trim = 12,
+    CharAt = 13,
+    Ord = 14,
+    Chr = 15,
+    Abs = 16,
+    Sqrt = 17,
+    Floor = 18,
+    Ceil = 19,
+    Round = 20,
+    Assert = 21,
+    Clock = 22,
+}
+
+impl BuiltinFn {
+    /// The source-level name, used for error messages, disassembly, and IR dumps.
+    pub fn name(self) -> &'static str {
+        use BuiltinFn::*;
+        match self {
+            Print => "print",
+            Max => "max",
+            Min => "min",
+            Int => "int",
+            Float => "float",
+            Str => "str",
+            Len => "len",
+            Input => "input",
+            Substr => "substr",
+            Find => "find",
+            Upper => "upper",
+            Lower => "lower",
+            Trim => "trim",
+            CharAt => "char_at",
+            Ord => "ord",
+            Chr => "chr",
+            Abs => "abs",
+            Sqrt => "sqrt",
+            Floor => "floor",
+            Ceil => "ceil",
+            Round => "round",
+            Assert => "assert",
+            Clock => "clock",
+        }
+    }
+
+    /// Reconstructs a `BuiltinFn` from a bytecode operand byte (the inverse
+    /// of `as u8`); `None` on a byte a valid compiler would never emit.
+    pub fn from_u8(b: u8) -> Option<BuiltinFn> {
+        use BuiltinFn::*;
+        Some(match b {
+            0 => Print,
+            1 => Max,
+            2 => Min,
+            3 => Int,
+            4 => Float,
+            5 => Str,
+            6 => Len,
+            7 => Input,
+            8 => Substr,
+            9 => Find,
+            10 => Upper,
+            11 => Lower,
+            12 => Trim,
+            13 => CharAt,
+            14 => Ord,
+            15 => Chr,
+            16 => Abs,
+            17 => Sqrt,
+            18 => Floor,
+            19 => Ceil,
+            20 => Round,
+            21 => Assert,
+            22 => Clock,
+            _ => return None,
+        })
+    }
 }
 
 /// What a call expression resolves to.
@@ -77,13 +164,36 @@ pub enum ResolvedCall {
     User(FunctionId),
 }
 
+/// Every built-in name, in the same order as the `BuiltinFn` variants —
+/// used both for name resolution and for "did you mean" suggestions.
+const BUILTIN_NAMES: &[(&str, BuiltinFn)] = &[
+    ("print", BuiltinFn::Print),
+    ("max", BuiltinFn::Max),
+    ("min", BuiltinFn::Min),
+    ("int", BuiltinFn::Int),
+    ("float", BuiltinFn::Float),
+    ("str", BuiltinFn::Str),
+    ("len", BuiltinFn::Len),
+    ("input", BuiltinFn::Input),
+    ("substr", BuiltinFn::Substr),
+    ("find", BuiltinFn::Find),
+    ("upper", BuiltinFn::Upper),
+    ("lower", BuiltinFn::Lower),
+    ("trim", BuiltinFn::Trim),
+    ("char_at", BuiltinFn::CharAt),
+    ("ord", BuiltinFn::Ord),
+    ("chr", BuiltinFn::Chr),
+    ("abs", BuiltinFn::Abs),
+    ("sqrt", BuiltinFn::Sqrt),
+    ("floor", BuiltinFn::Floor),
+    ("ceil", BuiltinFn::Ceil),
+    ("round", BuiltinFn::Round),
+    ("assert", BuiltinFn::Assert),
+    ("clock", BuiltinFn::Clock),
+];
+
 fn builtin_named(name: &str) -> Option<BuiltinFn> {
-    match name {
-        "print" => Some(BuiltinFn::Print),
-        "max" => Some(BuiltinFn::Max),
-        "min" => Some(BuiltinFn::Min),
-        _ => None,
-    }
+    BUILTIN_NAMES.iter().find(|(n, _)| *n == name).map(|(_, b)| *b)
 }
 
 struct VarInfo {
@@ -607,7 +717,7 @@ impl Resolver {
                 self.function_return_types.get(&id.0).copied().unwrap_or(DataType::Any)
             }
             None => {
-                let mut names: Vec<String> = vec!["print".to_string(), "max".to_string(), "min".to_string()];
+                let mut names: Vec<String> = BUILTIN_NAMES.iter().map(|(n, _)| n.to_string()).collect();
                 names.extend(self.function_names.values().cloned());
                 let message = format!("Unknown function: '{}'", call.name);
                 match closest_name(&call.name, &names) {
@@ -620,13 +730,35 @@ impl Resolver {
     }
 
     fn resolve_builtin_call(&mut self, builtin: BuiltinFn, arg_types: &[DataType], span: Option<TextSpan>) -> DataType {
+        use BuiltinFn::*;
+
+        // Fixed-arity builtins: (name, exact arg count, return type).
+        // Checked first so the per-builtin match below never sees a wrong
+        // argument count.
+        let fixed_arity: Option<usize> = match builtin {
+            Print | Max | Min => None, // variable-arity, checked separately below
+            Int | Float | Str | Len | Abs | Sqrt | Floor | Ceil | Round | Upper | Lower | Trim | Ord | Chr => Some(1),
+            Find | CharAt => Some(2),
+            Substr => Some(3),
+            Input | Clock => Some(0),
+            Assert => None, // 1 or 2, checked separately below
+        };
+        if let Some(expected) = fixed_arity {
+            if arg_types.len() != expected {
+                self.error_at(
+                    format!("{}() expects {} argument{} but got {}", builtin.name(), expected, if expected == 1 { "" } else { "s" }, arg_types.len()),
+                    span,
+                );
+                return DataType::Any;
+            }
+        }
+
         match builtin {
             // print() never produces a usable value.
-            BuiltinFn::Print => DataType::Any,
-            BuiltinFn::Max | BuiltinFn::Min => {
+            Print => DataType::Any,
+            Max | Min => {
                 if arg_types.is_empty() {
-                    let verb = if matches!(builtin, BuiltinFn::Max) { "max" } else { "min" };
-                    self.error_at(format!("{}() requires at least one argument", verb), span);
+                    self.error_at(format!("{}() requires at least one argument", builtin.name()), span);
                     return DataType::Any;
                 }
                 // ponytail: mismatched-argument-type errors inside max/min
@@ -634,6 +766,76 @@ impl Resolver {
                 // statically we just fall back to Any for a mixed call.
                 Self::combine_types(arg_types)
             }
+            Int => DataType::Integer,
+            Float => DataType::Float,
+            Str => DataType::String,
+            Len => {
+                self.expect_type(arg_types[0], DataType::String, builtin.name(), span);
+                DataType::Integer
+            }
+            Input => DataType::String,
+            Substr => {
+                self.expect_type(arg_types[0], DataType::String, builtin.name(), span.clone());
+                self.expect_numeric(arg_types[1], builtin.name(), span.clone());
+                self.expect_numeric(arg_types[2], builtin.name(), span);
+                DataType::String
+            }
+            Find => {
+                self.expect_type(arg_types[0], DataType::String, builtin.name(), span.clone());
+                self.expect_type(arg_types[1], DataType::String, builtin.name(), span);
+                DataType::Integer
+            }
+            Upper | Lower | Trim | Ord => {
+                self.expect_type(arg_types[0], DataType::String, builtin.name(), span);
+                if builtin == Ord { DataType::Integer } else { DataType::String }
+            }
+            CharAt => {
+                self.expect_type(arg_types[0], DataType::String, builtin.name(), span.clone());
+                self.expect_numeric(arg_types[1], builtin.name(), span);
+                DataType::String
+            }
+            Chr => {
+                self.expect_numeric(arg_types[0], builtin.name(), span);
+                DataType::String
+            }
+            Abs => match arg_types[0] {
+                DataType::Integer => DataType::Integer,
+                DataType::Float => DataType::Float,
+                DataType::Any => DataType::Any,
+                other => {
+                    self.error_at(format!("abs() requires a numeric argument, got {:?}", other), span);
+                    DataType::Any
+                }
+            },
+            Sqrt => {
+                self.expect_numeric(arg_types[0], builtin.name(), span);
+                DataType::Float
+            }
+            Floor | Ceil | Round => {
+                self.expect_numeric(arg_types[0], builtin.name(), span);
+                DataType::Integer
+            }
+            Assert => {
+                if arg_types.is_empty() || arg_types.len() > 2 {
+                    self.error_at(format!("assert() expects 1 or 2 arguments but got {}", arg_types.len()), span);
+                }
+                DataType::Any
+            }
+            Clock => DataType::Float,
+        }
+    }
+
+    /// Emits an error unless `actual` is `expected` or statically unknown (`Any`).
+    fn expect_type(&mut self, actual: DataType, expected: DataType, who: &str, span: Option<TextSpan>) {
+        if actual != expected && actual != DataType::Any {
+            self.error_at(format!("{}() requires a {:?} argument, got {:?}", who, expected, actual), span);
+        }
+    }
+
+    /// Emits an error unless `actual` is `Integer`, `Float`, or statically unknown (`Any`).
+    fn expect_numeric(&mut self, actual: DataType, who: &str, span: Option<TextSpan>) {
+        if !matches!(actual, DataType::Integer | DataType::Float | DataType::Any) {
+            self.error_at(format!("{}() requires a numeric argument, got {:?}", who, actual), span);
         }
     }
 

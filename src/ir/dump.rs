@@ -8,7 +8,6 @@
 
 use std::collections::HashSet;
 
-use crate::ast::resolver::BuiltinFn;
 use crate::ast::ASTBinaryOperatorKind;
 
 use super::instr::{InstrKind, IrFunction, IrProgram, Terminator};
@@ -115,12 +114,7 @@ fn render(kind: &InstrKind) -> String {
         StoreGlobal { slot, src } => format!("store_global {} = r{}", slot.0, src.0),
         Call { dst, function, args } => format!("r{} = call fn#{}({})", dst.0, function, regs(args)),
         CallBuiltin { dst, builtin, args } => {
-            let name = match builtin {
-                BuiltinFn::Print => "print",
-                BuiltinFn::Max => "max",
-                BuiltinFn::Min => "min",
-            };
-            format!("r{} = call {}({})", dst.0, name, regs(args))
+            format!("r{} = call {}({})", dst.0, builtin.name(), regs(args))
         }
     }
 }
